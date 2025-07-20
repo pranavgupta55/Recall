@@ -1,0 +1,27 @@
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 
+  We define our colors as raw R, G, B numbers.
+  This lets Tailwind automatically handle opacity for us later,
+  like bg-primary/50 for 50% transparency.
+*/
+:root {
+  /* This is your DARK THEME */
+  --background: 23 23 23;        /* A very dark, near-black gray */
+  --foreground: 229 229 229;    /* A light, off-white for text */
+  --muted-foreground: 163 163 163; /* A muted gray for sub-text */
+  
+  --primary: 20 184 166;         /* A strong Cyan color (like Tailwind's teal-500) */
+  --secondary: 225 29 72;        /* A deep, desaturated Rose color (like Tailwind's rose-600) */
+
+  /* Card and Muted backgrounds are slight variations of the main background */
+  --card: 38 38 38;               /* A slightly lighter dark gray for panels */
+  --muted: 51 51 51;              /* A slightly lighter gray for secondary buttons */
+  
+  /* Text colors for placing on top of colored buttons */
+  --primary-foreground: 23 23 23;  /* Dark text on the primary color */
+  --secondary-foreground: 229 229 229; /* Light text on the secondary color */
+}
