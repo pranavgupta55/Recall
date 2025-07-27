@@ -23,6 +23,7 @@ lerna-debug.log*
 .env.*.local
 .env.*
 supabase/.env.local
+supabase/seed.sql
 
 # IDE and OS files
 .vscode/
