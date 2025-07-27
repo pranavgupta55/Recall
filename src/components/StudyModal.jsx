@@ -1,6 +1,4 @@
-// src/components/StudyModal.jsx
-
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import FlashcardEditor from './FlashcardEditor';
 import MoveCardModal from './MoveCardModal';
 import { supabase } from '../lib/supabaseClient';
@@ -17,6 +15,7 @@ export default function StudyModal({ deck, cards, onClose, onCardsChange, decks,
     if (e.target === e.currentTarget) onClose();
   };
 
+  // This is the new, frontend-only transfer logic, integrated into the full component.
   const handleTransferDeck = async () => {
     if (!deckOwnerId) {
       alert('Could not determine the owner of this deck.');
@@ -25,27 +24,63 @@ export default function StudyModal({ deck, cards, onClose, onCardsChange, decks,
 
     if (window.confirm(`Are you sure you want to copy the "${deck}" deck to your account?`)) {
       try {
-        const { data, error } = await supabase.functions.invoke('transfer-deck', {
-          body: { 
-            source_deck_name: deck,
-            source_owner_id: deckOwnerId,
-          }
-        });
+        // Step 1: Fetch all cards from the source deck.
+        // This is allowed by our public SELECT RLS policy.
+        const { data: sourceCards, error: selectError } = await supabase
+          .from('flashcards')
+          .select('question, answer, deck') // Select only the data we need
+          .eq('user_id', deckOwnerId)
+          .eq('deck', deck)
+          .neq('question', '---PLACEHOLDER---');
 
-        if (error) throw error;
+        if (selectError) throw selectError;
+        if (!sourceCards || sourceCards.length === 0) {
+          alert("This deck is empty and cannot be copied.");
+          return;
+        }
+
+        // --- Logic to find a unique deck name (moved from backend to frontend) ---
+        const { data: ownerProfile } = await supabase.from('profiles').select('email').eq('id', deckOwnerId).single();
+        const ownerEmail = ownerProfile?.email.split('@')[0] || 'user';
+        const baseDeckName = `${deck} by ${ownerEmail}`;
+
+        let newDeckName = baseDeckName;
+        let counter = 1;
+        let isUnique = false;
         
-        alert(data.message);
+        while (!isUnique) {
+            const { count } = await supabase.from('flashcards')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', user.id)
+                .eq('deck', newDeckName);
+            if (count === 0) isUnique = true;
+            else newDeckName = `${baseDeckName} (${counter++})`;
+        }
+
+        // Step 2: Prepare the new cards for insertion with the current user's ID.
+        const newCardsToInsert = sourceCards.map(card => ({
+          question: card.question,
+          answer: card.answer,
+          deck: newDeckName, // Use the new unique name
+          user_id: user.id,   // Set the owner to the current user
+        }));
+
+        // Step 3: Bulk insert the new cards.
+        // This is allowed by our INSERT RLS policy: (auth.uid() = user_id)
+        const { error: insertError } = await supabase.from('flashcards').insert(newCardsToInsert);
+
+        if (insertError) throw insertError;
+
+        alert(`Successfully copied ${newCardsToInsert.length} cards into a new deck: "${newDeckName}".`);
         onClose();
 
       } catch (error) {
-        const err = error;
-        alert(`Failed to transfer deck: ${err.message}`);
+        alert(`Failed to transfer deck: ${error.message}`);
       }
     }
   };
 
-  // All other handlers (handleSaveCard, handleDelete, handleMoveCard) remain the same
-  // from the previous response where they were fully implemented.
+  // All other handlers from the original file are maintained for full UI functionality.
   const handleSaveCard = async (cardToSave) => {
     if (!isOwner) return;
     if (cardToSave.id) {
