@@ -1,67 +1,76 @@
 // File: supabase/functions/generate-cards/index.ts
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { OpenAI } from "https://esm.sh/langchain/llms/openai";
-import { PromptTemplate } from "https://esm.sh/langchain/prompts";
-import { CommaSeparatedListOutputParser } from "https://esm.sh/langchain/output_parsers";
+import { corsHeaders } from '../_shared/cors.ts';
+// --- NO MORE LANGCHAIN ---
+// We now use the official, stable OpenAI library.
+import OpenAI from "https://esm.sh/openai@4.52.7";
 
-// CORS Headers are essential for your web app to talk to this function
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+// Initialize the OpenAI client directly.
+// It automatically looks for the OPENAI_API_KEY in the environment.
+const openai = new OpenAI();
 
-// Initialize the LangChain components
-const llm = new OpenAI({ 
-  openAIApiKey: Deno.env.get("OPENAI_API_KEY")!, // Securely reads the API key
-  temperature: 0.7 
-});
-const parser = new CommaSeparatedListOutputParser();
-const template = `You are a helpful assistant that generates flashcards. Based on the topic "{topic}", generate 5 flashcard questions and answers.
-Return ONLY a comma-separated list of questions and answers, alternating. Do not include any other text, numbering, or explanations.
-Format: "Question 1,Answer 1,Question 2,Answer 2,..."
+type Flashcard = {
+  question: string;
+  answer: string;
+};
 
-{format_instructions}
-`;
-const prompt = new PromptTemplate({
-  template,
-  inputVariables: ["topic"],
-  partialVariables: { format_instructions: parser.getFormatInstructions() },
-});
-
-// The main server logic
-serve(async (req) => {
-  // This is a preflight request. It's a security check browsers do.
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
     const { topic } = await req.json();
-    if (!topic) throw new Error("No topic provided.");
 
-    const input = await prompt.format({ topic });
-    const response = await llm.call(input);
-    const parsedResponse = await parser.parse(response);
-
-    // LangChain returns a flat array: ['q1', 'a1', 'q2', 'a2', ...]
-    // We need to group it back into an array of objects: [{q: 'q1', a: 'a1'}, ...]
-    const flashcards = [];
-    for (let i = 0; i < parsedResponse.length; i += 2) {
-      if (parsedResponse[i+1]) { // Ensure we have a pair
-        flashcards.push({ question: parsedResponse[i].trim(), answer: parsedResponse[i+1].trim() });
-      }
+    if (!topic) {
+      throw new Error("Missing 'topic' in request body");
     }
 
-    return new Response(
-      JSON.stringify({ flashcards }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    )
+    // Manually create the prompt string. This is all LangChain was doing for us.
+    const prompt = `You are a helpful assistant that generates flashcards. Based on the topic "${topic}", generate 5 flashcard questions and answers. Return ONLY a comma-separated list of questions and answers, alternating. Format: "Question 1,Answer 1,Question 2,Answer 2,..."`;
+
+    // Use the official OpenAI client to call the API.
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo", // A standard, cost-effective model
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+    });
+
+    const responseText = completion.choices[0].message.content;
+
+    if (!responseText) {
+      throw new Error("Received an empty response from OpenAI.");
+    }
+
+    // Parse the comma-separated list.
+    const parsedResponse = responseText.split(',').map(item => item.trim());
+
+    const flashcards = parsedResponse.reduce<Flashcard[]>((acc, cur, i) => {
+      if (i % 2 === 0) {
+        acc.push({ question: cur, answer: '' });
+      } else {
+        if (acc.length > 0) {
+          acc[acc.length - 1].answer = cur;
+        }
+      }
+      return acc;
+    }, []);
+
+    return new Response(JSON.stringify({ flashcards }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
+    });
   } catch (error) {
-    console.error(error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    )
+    let errorMessage = "An unknown error occurred";
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    }
+    
+    console.error("Error in generate-cards function:", error);
+
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
+    });
   }
-})
+});
