@@ -1,13 +1,14 @@
 // src/App.jsx
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { useAuth } from './context/AuthContext';
+import { useAuth } from './context/AuthContext.jsx';
 
-import HomePage from './pages/HomePage'; // This is our Login/Signup page
-import DashboardPage from './pages/DashboardPage';
-import MyFlashcardsPage from './pages/MyFlashcardsPage';
-import CommunityFlashcardsPage from './pages/CommunityFlashcardsPage';
-import Navbar from './components/Navbar';
+import HomePage from './pages/HomePage.jsx'; // This is our Login/Signup page
+import DashboardPage from './pages/DashboardPage.jsx';
+import MyFlashcardsPage from './pages/MyFlashcardsPage.jsx';
+import CommunityFlashcardsPage from './pages/CommunityFlashcardsPage.jsx';
+import Navbar from './components/Navbar.jsx';
+import ChatbotPage from './pages/ChatbotPage.jsx';
 
 function App() {
   const { user } = useAuth();
@@ -22,6 +23,7 @@ function App() {
             <Routes>
               <Route path="/" element={<DashboardPage />} />
               <Route path="/my-flashcards" element={<MyFlashcardsPage />} />
+              <Route path="/ai-assistant" element={<ChatbotPage />} />
               <Route path="/community-flashcards" element={<CommunityFlashcardsPage />} />
             </Routes>
           </main>
