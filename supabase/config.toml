@@ -1,11 +1,11 @@
-[build]
-  publish = "dist"
-  command = "npm run build"
 
-[dev]
-  command = "npm run dev"
-  port = 8888
-  publish = "dist"
-
-[context.production.environment]
-  NODE_ENV = "production"
+[functions.generate-cards]
+enabled = true
+verify_jwt = false
+import_map = "./functions/generate-cards/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/generate-cards/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/generate-cards/*.html" ]
