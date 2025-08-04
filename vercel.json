@@ -1,0 +1,25 @@
+{
+    "builds": [
+      {
+        "src": "api/**/*.py",
+        "use": "@vercel/python"
+      },
+      {
+        "src": "package.json",
+        "use": "@vercel/node",
+        "config": {
+          "maxLambdaSize": "15mb"
+        }
+      }
+    ],
+    "routes": [
+      {
+        "src": "/api/(.*)",
+        "dest": "/api/generate_cards.py"
+      },
+      {
+        "src": "/(.*)",
+        "dest": "/"
+      }
+    ]
+  }

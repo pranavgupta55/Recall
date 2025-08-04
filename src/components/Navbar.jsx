@@ -22,7 +22,7 @@ export default function Navbar() {
           </div>
           <div className="flex items-center">
             <span className="text-muted-foreground text-sm mr-4">{user.email}</span>
-            <button
+            <button type="button"
               onClick={signOut}
               className="bg-secondary hover:bg-secondary/90 text-foreground px-3 py-2 rounded-md text-sm font-medium"
             >

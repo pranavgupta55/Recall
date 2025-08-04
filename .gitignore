@@ -1,6 +1,7 @@
 # Dependencies
 /node_modules
 node_modules
+api/venv
 
 # Build artifacts
 /dist
@@ -24,6 +25,8 @@ lerna-debug.log*
 .env.*
 supabase/.env.local
 supabase/seed.sql
+api/.env
+api/env
 
 # IDE and OS files
 .vscode/
@@ -39,3 +42,7 @@ supabase/seed.sql
 
 # Local config
 *.local
+
+# Supabase
+supabase/.temp/
+supabase/functions/**/deno.lock
