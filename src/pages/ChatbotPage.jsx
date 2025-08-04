@@ -1,197 +1,201 @@
 // src/pages/ChatbotPage.jsx
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import ReactMarkdown from 'react-markdown';
+import { FiPlus, FiTrash2, FiChevronDown, FiChevronUp, FiSave, FiZap } from 'react-icons/fi';
+
+// --- Helper Functions & Components ---
+const LoadingSpinner = () => <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current"></div>;
+
+// Moved outside the component to be a pure function for stability
+const calculateQuestionWidth = (q, a) => {
+  const qLen = q.length || 1;
+  const aLen = a.length || 1;
+  const baseRatio = (qLen / (qLen + aLen) + 0.5) / 2; // Weighted towards 50%
+  return Math.max(30, Math.min(70, baseRatio * 100));
+};
 
 export default function ChatbotPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const nextId = useRef(5); // For stable key generation
 
-  // State for user inputs
+  // --- State Management ---
+  const [deckName, setDeckName] = useState('');
   const [topic, setTopic] = useState('');
   const [context, setContext] = useState('');
   const [links, setLinks] = useState('');
-  const [subTopics, setSubTopics] = useState(['']); // Start with one empty sub-topic
-  const [numCards, setNumCards] = useState(5);
   const [tone, setTone] = useState('neutral');
   const [conciseness, setConciseness] = useState('standard');
+  const [cardRows, setCardRows] = useState(() => Array.from({ length: 5 }, (_, i) => ({ id: i, question: '', answer: '' })));
   
-  // State for the generate/save flow
-  const [generatedCards, setGeneratedCards] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  
+  const [promptSent, setPromptSent] = useState('');
+  const [rawOutput, setRawOutput] = useState('');
+  const [isOutputVisible, setIsOutputVisible] = useState(false);
 
-  // --- Input Handlers ---
-  const handleSubTopicChange = (index, value) => {
-    const updatedSubTopics = [...subTopics];
-    updatedSubTopics[index] = value;
-    setSubTopics(updatedSubTopics);
-  };
+  // --- Handlers ---
+  const handleCardChange = (id, field, value) => setCardRows(p => p.map(c => c.id === id ? { ...c, [field]: value } : c));
+  const addCardRow = () => setCardRows(p => [...p, { id: nextId.current++, question: '', answer: '' }]);
+  const removeCardRow = (id) => setCardRows(p => p.filter(c => c.id !== id));
 
-  const addSubTopicInput = () => setSubTopics([...subTopics, '']);
-  const removeSubTopicInput = (index) => setSubTopics(subTopics.filter((_, i) => i !== index));
+  useEffect(() => { if (topic && !deckName) setDeckName(topic); }, [topic, deckName]);
 
-  const handleCardChange = (index, field, value) => {
-    const updatedCards = [...generatedCards];
-    updatedCards[index][field] = value;
-    setGeneratedCards(updatedCards);
-  };
-
-  // --- API Call Handlers ---
-  const handleGenerate = async (e) => {
-    e.preventDefault();
-    if (!topic) {
-      setError('Topic is a required field.');
-      return;
-    }
-    
+  // --- API Calls ---
+  const handleGenerate = async () => {
+    if (!topic) { setError('Topic is required.'); return; }
     setIsLoading(true);
     setError('');
     setSuccessMessage('');
-    setGeneratedCards([]);
-
-    const payload = {
-      topic,
-      context,
-      links,
-      subTopics: subTopics.filter(st => st.trim() !== ''), // Only send non-empty sub-topics
-      numCards,
-      tone,
-      conciseness,
-    };
+    setRawOutput('');
+    setPromptSent('');
 
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          topic, context, links, tone, conciseness,
+          userDefinedCards: cardRows.filter(c => c.question.trim() || c.answer.trim()),
+          numCards: cardRows.length,
+        }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || 'Failed to generate cards.');
-      setGeneratedCards(result.flashcards);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
+      if (!response.ok) throw new Error(result.detail);
+      
+      const newCards = cardRows.map((orig, i) => ({...orig, ...result.flashcards[i]}));
+      setCardRows(newCards);
+      setRawOutput(result.raw_output);
+      setPromptSent(result.prompt_sent);
+    } catch (err) { setError(err.message); }
+    finally { setIsLoading(false); }
   };
 
   const handleSave = async () => {
+    if (!deckName) { setError('Deck Name is required.'); return; }
     setIsLoading(true);
     setError('');
     setSuccessMessage('');
-
     try {
       const response = await fetch('/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.id,
-          deckName: topic,
-          flashcards: generatedCards,
-        }),
+        body: JSON.stringify({ userId: user.id, deckName, flashcards: cardRows.filter(c => c.question && c.answer) }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || 'Failed to save deck.');
+      if (!response.ok) throw new Error(result.detail);
       setSuccessMessage(result.message);
       setTimeout(() => navigate('/my-flashcards'), 2000);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (err) { setError(err.message); }
+    finally { setIsLoading(false); }
   };
 
-  return (
-    <div className="w-full max-w-4xl mx-auto p-4 sm:p-8 space-y-8">
-      {/* --- INPUT SECTION --- */}
-      <div className="bg-card p-6 rounded-lg">
-        <h1 className="text-3xl font-bold mb-2">AI Assistant</h1>
-        <p className="text-muted-foreground mb-6">Generate a new deck of flashcards on any topic.</p>
-        <form onSubmit={handleGenerate} className="space-y-6">
-          {/* Main Inputs */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label htmlFor="topic" className="block text-sm font-medium text-muted-foreground mb-1">Topic (Required)</label>
-              <input id="topic" type="text" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g., The basics of Photosynthesis" required className="input-style" />
-            </div>
-            <div>
-              <label htmlFor="links" className="block text-sm font-medium text-muted-foreground mb-1">Relevant Links</label>
-              <textarea id="links" value={links} onChange={(e) => setLinks(e.target.value)} placeholder="https://example.com/article1 (one per line)" className="input-style h-20"></textarea>
-            </div>
-          </div>
-          <div>
-            <label htmlFor="context" className="block text-sm font-medium text-muted-foreground mb-1">Context / Notes</label>
-            <textarea id="context" value={context} onChange={(e) => setContext(e.target.value)} placeholder="Paste any relevant notes or text here..." className="input-style h-32"></textarea>
-          </div>
-          
-          {/* Sub Topics */}
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1">Specific Sub-Topics (Optional)</label>
-            <div className="space-y-2">
-              {subTopics.map((st, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <input type="text" value={st} onChange={(e) => handleSubTopicChange(index, e.target.value)} placeholder={`Sub-topic ${index + 1}`} className="input-style flex-grow" />
-                  <button type="button" onClick={() => removeSubTopicInput(index)} className="text-muted-foreground hover:text-secondary">×</button>
-                </div>
-              ))}
-              <button type="button" onClick={addSubTopicInput} className="text-sm text-primary hover:underline">+ Add another sub-topic</button>
-            </div>
-          </div>
+  const parsedOutput = useMemo(() => {
+    try { return JSON.parse(rawOutput); }
+    catch { return { flashcards: [] }; }
+  }, [rawOutput]);
 
-          {/* Settings */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4 border-t border-muted">
-            <div>
-              <label htmlFor="numCards" className="block text-sm font-medium text-muted-foreground mb-1">Number of Cards: {numCards}</label>
-              <input id="numCards" type="range" min="3" max="15" value={numCards} onChange={(e) => setNumCards(Number(e.target.value))} className="w-full" />
-            </div>
-            <div>
-              <label htmlFor="tone" className="block text-sm font-medium text-muted-foreground mb-1">Tone</label>
-              <select id="tone" value={tone} onChange={(e) => setTone(e.target.value)} className="input-style">
-                <option value="neutral">Neutral</option>
-                <option value="formal">Formal</option>
-                <option value="casual">Casual</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor="conciseness" className="block text-sm font-medium text-muted-foreground mb-1">Conciseness</label>
-              <select id="conciseness" value={conciseness} onChange={(e) => setConciseness(e.target.value)} className="input-style">
-                <option value="standard">Standard</option>
-                <option value="concise">Concise</option>
-                <option value="detailed">Detailed</option>
-              </select>
-            </div>
-          </div>
-          <button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold py-3 px-6 rounded-lg" disabled={isLoading}>
-            {isLoading ? 'Generating...' : 'Generate Flashcards'}
-          </button>
-        </form>
+  return (
+    <div className="w-screen h-screen bg-background text-foreground overflow-hidden flex flex-col p-8 gap-6">
+      <div className="flex-shrink-0 flex items-center justify-between gap-4">
+        <div className="glass-pane hover:bg-card/80 w-1/2">
+          <input type="text" value={deckName} onChange={(e) => setDeckName(e.target.value)} placeholder="Enter Deck Title..." className="input-style text-xl font-bold h-14 bg-transparent border-none" required />
+        </div>
+        <button onClick={handleSave} disabled={isLoading || cardRows.every(c => !c.question || !c.answer)} className="glass-pane h-14 px-8 font-bold bg-secondary/80 hover:bg-secondary text-secondary-foreground rounded-xl flex items-center gap-3 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed">
+          {isLoading ? <LoadingSpinner /> : <><FiSave size={20} /> Save Deck</>}
+        </button>
       </div>
 
-      {/* --- REFINEMENT SECTION --- */}
-      {generatedCards.length > 0 && (
-        <div className="bg-card p-6 rounded-lg space-y-4 animate-fade-in">
-          <h2 className="text-2xl font-bold">Refine Your Flashcards</h2>
-          <p className="text-muted-foreground">Edit the generated cards below before saving them to your collection.</p>
-          {generatedCards.map((card, index) => (
-            <div key={index} className="space-y-2 p-4 border border-muted rounded-lg">
-              <label className="text-sm font-medium text-muted-foreground">Question {index + 1}</label>
-              <textarea value={card.question} onChange={(e) => handleCardChange(index, 'question', e.target.value)} className="input-style w-full h-16" />
-              <label className="text-sm font-medium text-muted-foreground">Answer {index + 1}</label>
-              <textarea value={card.answer} onChange={(e) => handleCardChange(index, 'answer', e.target.value)} className="input-style w-full h-24" />
+      <div className="flex-grow flex gap-6 overflow-hidden">
+        {/* LEFT COLUMN: INPUTS */}
+        <div className="w-1/2 flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="glass-pane p-4 space-y-2 group hover:bg-card/80">
+              <label className="font-semibold text-muted-foreground text-sm">Main Topic</label>
+              <textarea value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g., The Roman Empire" className="input-style h-[6.5rem] text-base resize-none" />
             </div>
-          ))}
-          <button onClick={handleSave} className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground font-bold py-3 px-6 rounded-lg" disabled={isLoading}>
-            {isLoading ? 'Saving...' : `Save to Deck: "${topic}"`}
+            <div className="glass-pane p-4 space-y-2 group hover:bg-card/80">
+              <label className="font-semibold text-muted-foreground text-sm">Relevant Links</label>
+              <textarea value={links} onChange={(e) => setLinks(e.target.value)} placeholder="https://... (one per line)" className="input-style h-[6.5rem] resize-none" />
+            </div>
+          </div>
+          <div className="glass-pane p-4 space-y-2 flex-grow flex flex-col group hover:bg-card/80">
+            <label className="font-semibold text-muted-foreground text-sm">Context / Notes</label>
+            <textarea value={context} onChange={(e) => setContext(e.target.value)} placeholder="Paste any relevant text here..." className="input-style flex-grow resize-none" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="glass-pane p-4 space-y-2 group hover:bg-card/80">
+              <label className="font-semibold text-muted-foreground text-sm">Tone</label>
+              <select value={tone} onChange={(e) => setTone(e.target.value)} className="input-style !h-14"><option value="neutral">Neutral</option><option value="formal">Formal</option><option value="casual">Casual</option></select>
+            </div>
+            <div className="glass-pane p-4 space-y-2 group hover:bg-card/80">
+              <label className="font-semibold text-muted-foreground text-sm">Conciseness</label>
+              <select value={conciseness} onChange={(e) => setConciseness(e.target.value)} className="input-style !h-14"><option value="standard">Standard</option><option value="concise">Concise</option><option value="detailed">Detailed</option></select>
+            </div>
+          </div>
+          <button onClick={handleGenerate} disabled={isLoading} className="w-full flex-shrink-0 glass-pane h-16 bg-primary/80 hover:bg-primary text-primary-foreground font-bold text-lg rounded-xl flex items-center justify-center gap-3 transition-colors duration-300 disabled:opacity-50">
+            {isLoading ? <><LoadingSpinner /> Generating...</> : <><FiZap size={20}/> Generate Flashcards</>}
           </button>
         </div>
-      )}
 
-      {/* --- STATUS MESSAGES --- */}
-      {error && <p className="text-secondary text-center">{error}</p>}
-      {successMessage && <p className="text-primary text-center">{successMessage}</p>}
+        {/* RIGHT COLUMN: FLASHCARDS */}
+        <div className="w-1/2 flex flex-col gap-4">
+          <div className="flex-grow glass-pane p-4 pr-2 space-y-3 overflow-y-auto scroll-fade">
+            {cardRows.map((card, index) => (
+              <div key={card.id} className="bg-background/40 p-3 rounded-xl relative group hover:bg-background/80 transition-colors duration-300">
+                <button onClick={() => removeCardRow(card.id)} className="absolute top-2 right-2 p-1 rounded-full text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-secondary/20 hover:text-secondary transition-opacity"><FiTrash2 size={16}/></button>
+                <div className="flex gap-3">
+                  <div style={{ width: `${calculateQuestionWidth(card.question, card.answer)}%` }} className="transition-[width] duration-500 ease-in-out">
+                    <textarea value={card.question} onChange={(e) => handleCardChange(card.id, 'question', e.target.value)} placeholder={`Question ${index + 1}...`} className="input-style min-h-[7rem] border-white/5 group-hover:border-white/20 resize-none" />
+                  </div>
+                  <div className="flex-grow">
+                    <textarea value={card.answer} onChange={(e) => handleCardChange(card.id, 'answer', e.target.value)} placeholder="Answer..." className="input-style min-h-[7rem] border-white/5 group-hover:border-white/20 resize-none" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button onClick={addCardRow} className="flex-shrink-0 glass-pane h-12 hover:bg-card/80 text-muted-foreground font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors duration-300">
+            <FiPlus /> Add New Card
+          </button>
+        </div>
+      </div>
+
+      {/* BOTTOM BAR: STATUS & RAW OUTPUT */}
+      <div className="flex-shrink-0">
+        {(error || successMessage) && <div className={`text-center font-semibold p-2 rounded-lg ${error ? 'text-secondary' : 'text-primary'}`}>{error || successMessage}</div>}
+        {promptSent && (
+          <div className="glass-pane mt-2">
+            <button onClick={() => setIsOutputVisible(!isOutputVisible)} className="w-full p-3 font-semibold text-muted-foreground flex justify-between items-center hover:bg-card/60 rounded-t-xl">
+              <span>Developer Output</span>
+              {isOutputVisible ? <FiChevronUp /> : <FiChevronDown />}
+            </button>
+            {isOutputVisible && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border-t border-white/10">
+                <div>
+                  <h4 className="font-bold mb-2">Prompt Sent to AI</h4>
+                  <div className="text-xs bg-black/30 p-3 rounded-md overflow-auto h-48 prose prose-invert prose-sm"><ReactMarkdown>{promptSent}</ReactMarkdown></div>
+                </div>
+                <div>
+                  <h4 className="font-bold mb-2">Raw JSON Response</h4>
+                  <pre className="text-xs bg-black/30 p-3 rounded-md overflow-auto h-48"><code>{rawOutput}</code></pre>
+                </div>
+                 <div>
+                  <h4 className="font-bold mb-2">Parsed Text</h4>
+                  <div className="text-xs bg-black/30 p-3 rounded-md overflow-y-auto h-48 space-y-2">
+                    {parsedOutput.flashcards.map((c, i) => <div key={i}><strong>Q:</strong> {c.question}<br/><strong>A:</strong> {c.answer}</div>)}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

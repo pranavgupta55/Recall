@@ -3,31 +3,55 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer components {
-  .input-style {
-    @apply w-full px-3 py-2 bg-background border border-muted rounded-md focus:outline-none focus:ring-2 focus:ring-primary;
-  }
-}
-
-/* 
-  We define our colors as raw R, G, B numbers.
-  This lets Tailwind automatically handle opacity for us later,
-  like bg-primary/50 for 50% transparency.
-*/
 :root {
   /* This is your DARK THEME */
-  --background: 23 23 23;        /* A very dark, near-black gray */
-  --foreground: 229 229 229;    /* A light, off-white for text */
-  --muted-foreground: 163 163 163; /* A muted gray for sub-text */
-  
-  --primary: 20 184 166;         /* A strong Cyan color (like Tailwind's teal-500) */
-  --secondary: 225 29 72;        /* A deep, desaturated Rose color (like Tailwind's rose-600) */
+  --background: 10 11 12;      /* A very dark, near-black gray */
+  --foreground: 229 229 229;  /* A light, off-white for text */
+  --muted-foreground: 163 163 163;
 
-  /* Card and Muted backgrounds are slight variations of the main background */
-  --card: 38 38 38;               /* A slightly lighter dark gray for panels */
-  --muted: 51 51 51;              /* A slightly lighter gray for secondary buttons */
+  --primary: 59 96 115;       /* Pastel Blue */
+  --secondary: 89 28 45;      /* Pastel Rose */
   
-  /* Text colors for placing on top of colored buttons */
-  --primary-foreground: 23 23 23;  /* Dark text on the primary color */
-  --secondary-foreground: 229 229 229; /* Light text on the secondary color */
+  /* --- VISUAL TWEAKS --- */
+  /* Brighter card background for more contrast */
+  --card: 35 37 40;             
+  --muted: 51 51 51;
+
+  --primary-foreground: 23 23 23;
+  --secondary-foreground: 229 229 229;
+}
+
+@layer components {
+  /* Main floating pane style with hover effect */
+  .glass-pane {
+    @apply bg-card/50 backdrop-blur-xl rounded-xl shadow-lg transition-colors duration-300;
+  }
+
+  /* Input style for textareas and selects */
+  .input-style {
+    @apply w-full h-full px-4 py-3 bg-transparent border border-white/10 rounded-lg resize-y;
+    @apply focus:outline-none focus:ring-0; /* Remove the focus ring */
+    min-height: 4rem; /* Enforce a minimum height */
+  }
+
+  /* Style for the scrollable area with a fade-out effect */
+  .scroll-fade {
+    mask-image: linear-gradient(to bottom, transparent, black 1rem, black 95%, transparent);
+    padding-right: 0.5rem; /* Add padding to prevent scrollbar from hitting the edge */
+  }
+  
+  /* Custom scrollbar to match the theme */
+  .scroll-fade::-webkit-scrollbar {
+    width: 6px;
+  }
+  .scroll-fade::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-fade::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+  }
+  .scroll-fade::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
 }
