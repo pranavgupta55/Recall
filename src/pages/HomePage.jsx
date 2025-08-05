@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
-import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabaseClient.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 export default function HomePage() {
   const { user, signOut } = useAuth();

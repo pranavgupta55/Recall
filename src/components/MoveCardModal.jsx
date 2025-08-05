@@ -1,7 +1,7 @@
 // src/components/MoveCardModal.jsx
 
 import { useState } from 'react';
-import DeckSelector from './DeckSelector';
+import DeckSelector from './DeckSelector.jsx';
 
 export default function MoveCardModal({ currentDeck, decks, onMove, onCancel }) {
   const [targetDeck, setTargetDeck] = useState('');

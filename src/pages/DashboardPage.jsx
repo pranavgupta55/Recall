@@ -1,9 +1,9 @@
 // src/pages/DashboardPage.jsx
 
 import { Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext.jsx';
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from '../lib/supabaseClient.js';
 
 export default function DashboardPage() {
   const { user } = useAuth();

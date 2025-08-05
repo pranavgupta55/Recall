@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import FlashcardEditor from './FlashcardEditor';
-import MoveCardModal from './MoveCardModal';
-import { supabase } from '../lib/supabaseClient';
-import { useAuth } from '../context/AuthContext';
+import FlashcardEditor from './FlashcardEditor.jsx';
+import MoveCardModal from './MoveCardModal.jsx';
+import { supabase } from '../lib/supabaseClient.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 export default function StudyModal({ deck, cards, onClose, onCardsChange, decks, isOwner = false, deckOwnerId = null }) {
   const { user } = useAuth();
