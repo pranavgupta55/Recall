@@ -1,94 +1,123 @@
-// Add FiPlay to the import from react-icons/fi
-import { FiPlay } from 'react-icons/fi';
-import { useState } from 'react';
-import FlashcardEditor from './FlashcardEditor.jsx';
-import MoveCardModal from './MoveCardModal.jsx';
+// src/components/StudyModal.jsx
+
+import { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
-import { useAuth } from '../context/AuthContext.jsx';
+import DeckSelector from './DeckSelector.jsx';
 
-// Add the new onStartStudy prop
-export default function StudyModal({ deck, cards, onClose, onCardsChange, decks, isOwner = false, deckOwnerId = null, onStartStudy }) {
-  const { user } = useAuth();
-  const [editingCard, setEditingCard] = useState(null);
-  const [movingCard, setMovingCard] = useState(null);
+export default function StudyModal({
+  deck,
+  cards: initialCards,
+  isOwner,
+  onClose,
+  onCardsChange,
+  decks,
+  onStartStudy,
+  onAddCard,
+  onEditCard
+}) {
+  const [cards, setCards] = useState(initialCards);
+  const [selectedCards, setSelectedCards] = useState([]);
+  const [isMoving, setIsMoving] = useState(false);
+  const [moveTargetDeck, setMoveTargetDeck] = useState('');
 
-  // ... (rest of the component logic remains the same)
+  // Keep internal `cards` state in sync with parent props
+  useEffect(() => {
+    setCards(initialCards);
+  }, [initialCards]);
 
-  // --- Handlers from original file ---
-  const displayableCards = cards.filter(c => c.question !== '---PLACEHOLDER---');
-  const handleOverlayClick = (e) => { if (e.target === e.currentTarget) onClose(); };
-  const handleTransferDeck = async () => { /* ... */ };
-  const handleSaveCard = async (cardToSave) => { /* ... */ };
-  const handleDelete = async (cardId) => { /* ... */ };
-  const handleMoveCard = async (newDeck) => { /* ... */ };
+  const displayableCards = useMemo(() => {
+    return cards.filter(c => c.question !== '---PLACEHOLDER---');
+  }, [cards]);
 
+  const toggleCardSelection = (cardId) => {
+    setSelectedCards(prev =>
+      prev.includes(cardId) ? prev.filter(id => id !== cardId) : [...prev, cardId]
+    );
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedCards.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedCards.length} card(s)?`)) return;
+
+    const { error } = await supabase.from('flashcards').delete().in('id', selectedCards);
+    if (error) {
+      console.error('Error deleting cards:', error);
+    } else {
+      setSelectedCards([]);
+      onCardsChange();
+    }
+  };
+
+  const handleMoveSelected = async () => {
+    const finalDeckName = moveTargetDeck.trim();
+    if (selectedCards.length === 0 || !finalDeckName) return;
+    if (!window.confirm(`Move ${selectedCards.length} card(s) to "${finalDeckName}"?`)) return;
+
+    const { error } = await supabase.from('flashcards').update({ deck: finalDeckName }).in('id', selectedCards);
+    if (error) {
+      console.error('Error moving cards:', error);
+    } else {
+      setSelectedCards([]);
+      setIsMoving(false);
+      onCardsChange();
+      onClose(); // Close the modal since the context has changed
+    }
+  };
 
   return (
-    <div className="fixed inset-0 bg-black/75 flex items-center justify-center p-4 sm:p-8 z-40" onClick={handleOverlayClick}>
-      {/* ... (editing and moving modals) ... */}
-      
-      <div className="bg-card rounded-lg shadow-2xl w-full max-w-5xl h-[90%] flex flex-col">
-        <header className="flex items-center justify-between p-4 border-b border-muted">
-            <h2 className="text-2xl font-bold capitalize">{deck}</h2>
-            <div className="flex items-center gap-4">
-                {isOwner && (
-                    <button onClick={onStartStudy} className="bg-primary text-primary-foreground font-bold py-2 px-4 rounded-lg hover:bg-primary/90 flex items-center gap-2">
-                        <FiPlay /> Study Deck
-                    </button>
-                )}
-                {!isOwner && (
-                    <button onClick={handleTransferDeck} className="bg-primary text-primary-foreground font-bold py-2 px-4 rounded-lg hover:bg-primary/90">
-                    Transfer to My Account
-                    </button>
-                )}
-                <button onClick={onClose} className="bg-secondary text-secondary-foreground font-bold p-2 rounded-full hover:bg-secondary/90" title="Close">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-            </div>
-        </header>
-        
-        {/* ... (rest of the modal content for viewing/editing cards) ... */}
-         <div className="flex-grow p-6 overflow-y-auto space-y-4">
-          {displayableCards.length === 0 && isOwner ? (
-            <div className="text-center text-muted-foreground flex flex-col items-center justify-center h-full">
-              <p>This deck is empty.</p>
-              <p>Add a card to get started!</p>
-            </div>
-           ) : (
-            displayableCards.map(card => (
-              <div key={card.id} onClick={() => isOwner && setEditingCard(card)}
-                className={`bg-background p-4 rounded-lg flex justify-between items-start group transition-all duration-300 ${isOwner ? 'hover:scale-[1.02] hover:shadow-lg cursor-pointer' : ''}`}
-              >
-                <div>
-                  <p className="font-semibold">{card.question}</p>
-                  <p className="text-muted-foreground mt-2">{card.answer}</p>
-                </div>
-                {isOwner && (
-                  <div className="flex gap-2 flex-shrink-0 ml-4 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => setEditingCard(card)} className="bg-muted hover:bg-primary text-foreground hover:text-primary-foreground p-2 rounded-full" title="Edit">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
-                    </button>
-                    <button onClick={() => setMovingCard(card)} className="bg-muted hover:bg-primary text-foreground hover:text-primary-foreground p-2 rounded-full" title="Move">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
-                    </button>
-                    <button onClick={() => handleDelete(card.id)} className="bg-muted hover:bg-secondary text-foreground hover:text-secondary-foreground p-2 rounded-full" title="Delete">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-40" onClick={onClose}>
+      <div className="bg-background rounded-2xl shadow-2xl p-8 w-full max-w-4xl h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-start mb-6">
+          <h2 className="text-3xl font-bold capitalize">{deck}</h2>
+          <button onClick={onClose} className="text-4xl leading-none text-muted-foreground hover:text-foreground">&times;</button>
         </div>
-        
+
         {isOwner && (
-          <footer className="p-4 border-t border-muted">
-            <button onClick={() => setEditingCard({})} className="w-full border-2 border-dashed border-muted rounded-lg p-4 text-muted-foreground flex justify-center items-center gap-2 hover:border-primary hover:text-primary transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-              Add New Card
-            </button>
-          </footer>
+          <div className="flex flex-wrap gap-4 items-center mb-6 pb-6 border-b border-muted">
+            <button onClick={onAddCard} className="bg-primary text-primary-foreground font-bold py-2 px-4 rounded-lg">Add New Flashcard</button>
+            <button onClick={onStartStudy} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Study Deck</button>
+            {selectedCards.length > 0 && (
+              <>
+                <button onClick={() => setIsMoving(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Move ({selectedCards.length})</button>
+                <button onClick={handleDeleteSelected} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">Delete ({selectedCards.length})</button>
+              </>
+            )}
+          </div>
         )}
+        
+        {isMoving && (
+          <div className="flex items-center gap-4 mb-4 p-4 bg-muted/50 rounded-lg animate-fade-in">
+            <div className="flex-grow"><DeckSelector decks={decks} currentDeck={deck} onSelect={setMoveTargetDeck} /></div>
+            <button onClick={handleMoveSelected} className="bg-primary text-primary-foreground font-bold py-2 px-6 rounded-lg">Move</button>
+            <button onClick={() => setIsMoving(false)} className="bg-muted hover:bg-muted/80 font-bold py-2 px-6 rounded-lg">Cancel</button>
+          </div>
+        )}
+
+        {/* --- UI REVERTED: Restored original card list layout --- */}
+        <div className="flex-grow overflow-y-auto space-y-3 p-2">
+          {displayableCards.length > 0 ? displayableCards.map(card => (
+            <div
+              key={card.id}
+              className={`bg-card p-4 rounded-lg flex items-start gap-4 transition-colors duration-200 ${selectedCards.includes(card.id) ? 'ring-2 ring-primary' : 'ring-0'}`}
+            >
+              {isOwner && (
+                <input
+                  type="checkbox"
+                  checked={selectedCards.includes(card.id)}
+                  onChange={() => toggleCardSelection(card.id)}
+                  className="w-5 h-5 rounded mt-1 flex-shrink-0"
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                  <p className="font-semibold break-words">{card.question}</p>
+                  <p className="text-muted-foreground mt-1 break-words">{card.answer}</p>
+              </div>
+              {isOwner && (
+                  <button onClick={() => onEditCard(card)} className="text-sm font-semibold hover:text-primary ml-auto pl-4">Edit</button>
+              )}
+            </div>
+          )) : <p className="text-center text-muted-foreground italic mt-10">This deck has no cards. Click "Add New Flashcard" to get started.</p>}
+        </div>
       </div>
     </div>
   );

@@ -1,36 +1,38 @@
+// src/pages/MyFlashcardsPage.jsx
+
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom'; // Import useNavigate
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
-import { addDeckToHistory } from '../lib/studyHistory.js'; // Import the localStorage helper
+import { addDeckToHistory } from '../lib/studyHistory.js';
 
 import StudyModal from '../components/StudyModal.jsx';
 import DeckCard from '../components/DeckCard.jsx';
 import DeckCreatorModal from '../components/DeckCreatorModal.jsx';
-
-// We NO LONGER import StudySessionModal.jsx
+import FlashcardEditor from '../components/FlashcardEditor.jsx';
 
 export default function MyFlashcardsPage() {
   const { user } = useAuth();
-  const navigate = useNavigate(); // Initialize the navigate function
+  const navigate = useNavigate();
 
   const [flashcards, setFlashcards] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDeckData, setSelectedDeckData] = useState(null);
   const [isCreatingDeck, setIsCreatingDeck] = useState(false);
+  const [editingCard, setEditingCard] = useState(null);
 
-  // The obsolete `studyingDeckData` state has been removed.
+  // --- FIX: Use a simple string for the selected deck name instead of a complex object ---
+  const [selectedDeckName, setSelectedDeckName] = useState(null);
 
   useEffect(() => {
     fetchMyDecks();
   }, [user.id]);
 
   const fetchMyDecks = async () => {
-    setLoading(true);
+    // No need to set loading to true here on every refetch, just initially.
     const { data, error } = await supabase.from('flashcards').select('*').eq('user_id', user.id);
     if (error) console.error('Error fetching flashcards:', error);
     else if (data) setFlashcards(data);
-    setLoading(false);
+    setLoading(false); // Only set loading false after the initial fetch is complete
   };
 
   const groupedByDeck = useMemo(() => {
@@ -51,17 +53,45 @@ export default function MyFlashcardsPage() {
     setIsCreatingDeck(false);
     if (error) { console.error('Error creating new deck:', error); return; }
     await fetchMyDecks();
-    setSelectedDeckData({ deck: newDeckName, cards: data });
+    setSelectedDeckName(newDeckName); // Open the new deck in the StudyModal
+  };
+  
+  const handleStartStudy = (deckName, cards) => {
+    addDeckToHistory({ deckName: deckName, cards: cards });
+    navigate(`/study/${encodeURIComponent(deckName)}`);
   };
 
-  // --- THIS IS THE CORRECTED LOGIC ---
-  const handleStartStudy = (deckData) => {
-    // 1. Add the selected deck to the browser's persistent history
-    addDeckToHistory({ deckName: deckData.deck, cards: deckData.cards });
+  const handleSaveCard = async (cardToSave) => {
+    const isEditing = !!cardToSave.id;
     
-    // 2. Navigate to the dedicated study page for that deck
-    navigate(`/study/${encodeURIComponent(deckData.deck)}`);
+    // --- FIX: Get the deck name from the corrected state variable ---
+    const deckName = selectedDeckName;
+    if (!deckName) {
+        console.error("No deck selected to save card into.");
+        return;
+    }
+    
+    if (isEditing) {
+      const { error } = await supabase.from('flashcards').update({
+        question: cardToSave.question,
+        answer: cardToSave.answer
+      }).eq('id', cardToSave.id);
+      if (error) console.error('Error updating card:', error);
+    } else {
+      const { error } = await supabase.from('flashcards').insert({
+        question: cardToSave.question,
+        answer: cardToSave.answer,
+        deck: deckName,
+        user_id: user.id
+      });
+      if (error) console.error('Error creating card:', error);
+    }
+    
+    setEditingCard(null);
+    await fetchMyDecks();
   };
+  
+  // --- REMOVED: The problematic useEffect that caused the infinite loop is gone. ---
 
   return (
     <div className="w-full max-w-7xl mx-auto p-4 sm:p-8">
@@ -69,21 +99,26 @@ export default function MyFlashcardsPage() {
         <DeckCreatorModal onSave={handleCreateDeck} onCancel={() => setIsCreatingDeck(false)} />
       )}
 
-      {/* The conditional rendering for StudySessionModal has been REMOVED */}
+      {editingCard && (
+        <FlashcardEditor
+          card={editingCard === true ? {} : editingCard}
+          onSave={handleSaveCard}
+          onCancel={() => setEditingCard(null)}
+        />
+      )}
 
-      {selectedDeckData && (
+      {/* --- FIX: Conditionally render based on selectedDeckName --- */}
+      {selectedDeckName && (
         <StudyModal
-          deck={selectedDeckData.deck}
-          cards={selectedDeckData.cards}
+          deck={selectedDeckName}
+          cards={groupedByDeck[selectedDeckName] || []}
           isOwner={true}
-          onClose={() => setSelectedDeckData(null)}
-          onCardsChange={(updatedCards) => {
-            fetchMyDecks();
-            setSelectedDeckData(prev => ({ ...prev, cards: updatedCards }));
-          }}
+          onClose={() => setSelectedDeckName(null)} // This is now safe
+          onCardsChange={fetchMyDecks}
           decks={decks}
-          // The onStartStudy prop now correctly triggers the navigation logic
-          onStartStudy={() => handleStartStudy(selectedDeckData)} 
+          onStartStudy={() => handleStartStudy(selectedDeckName, groupedByDeck[selectedDeckName])}
+          onEditCard={(card) => setEditingCard(card)}
+          onAddCard={() => setEditingCard(true)}
         />
       )}
       
@@ -105,7 +140,7 @@ export default function MyFlashcardsPage() {
               key={deck}
               deck={deck}
               cards={groupedByDeck[deck]}
-              onClick={() => setSelectedDeckData({ deck, cards: groupedByDeck[deck] })}
+              onClick={() => setSelectedDeckName(deck)} // Set the name string on click
             />
           ))}
         </div>
