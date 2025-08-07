@@ -1,35 +1,27 @@
 // src/components/Navbar.jsx
-
-import { Link } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function Navbar() {
   const { user, signOut } = useAuth();
 
+  const linkStyle = "px-4 py-2 rounded-md hover:bg-card transition-colors";
+  const activeLinkStyle = `${linkStyle} bg-card font-semibold`;
+
   return (
-    <nav className="bg-card shadow-md w-full">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          <div className="flex items-center">
-            <Link to="/" className="text-foreground font-bold text-xl">AI Flashcards</Link>
-            <div className="hidden md:block">
-              <div className="ml-10 flex items-baseline space-x-4">
-                <Link to="/my-flashcards" className="text-gray-300 hover:bg-muted/90 hover:text-foreground px-3 py-2 rounded-md text-sm font-medium">My Cards</Link>
-                <Link to="/ai-assistant" className="text-gray-300 hover:bg-muted/90 hover:text-foreground px-3 py-2 rounded-md text-sm font-medium">AI Assistant</Link>
-                <Link to="/community-flashcards" className="text-gray-300 hover:bg-muted/90 hover:text-foreground px-3 py-2 rounded-md text-sm font-medium">Community</Link>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center">
-            <span className="text-muted-foreground text-sm mr-4">{user.email}</span>
-            <button type="button"
-              onClick={signOut}
-              className="bg-secondary hover:bg-secondary/90 text-foreground px-3 py-2 rounded-md text-sm font-medium"
-            >
-              Sign Out
-            </button>
-          </div>
+    <nav className="flex items-center justify-between px-8 py-4 border-b border-muted">
+      <div className="flex items-center gap-4">
+        <NavLink to="/" className="text-xl font-bold">AI Flashcards</NavLink>
+        <div className="flex items-center gap-2">
+          <NavLink to="/my-flashcards" className={({ isActive }) => isActive ? activeLinkStyle : linkStyle}>My Cards</NavLink>
+          <NavLink to="/ai-assistant" className={({ isActive }) => isActive ? activeLinkStyle : linkStyle}>AI Assistant</NavLink>
+          <NavLink to="/community-flashcards" className={({ isActive }) => isActive ? activeLinkStyle : linkStyle}>Community</NavLink>
+          <NavLink to="/study" className={({ isActive }) => isActive ? activeLinkStyle : linkStyle}>Study</NavLink>
         </div>
+      </div>
+      <div className="flex items-center gap-4">
+        <span className="text-muted-foreground">{user.email}</span>
+        <button onClick={signOut} className="bg-secondary text-secondary-foreground font-bold py-2 px-4 rounded-lg hover:bg-secondary/90">Sign Out</button>
       </div>
     </nav>
   );

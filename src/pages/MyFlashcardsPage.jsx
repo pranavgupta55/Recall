@@ -1,18 +1,25 @@
-// src/pages/MyFlashcardsPage.jsx
-
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom'; // Import useNavigate
 import { supabase } from '../lib/supabaseClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { addDeckToHistory } from '../lib/studyHistory.js'; // Import the localStorage helper
+
 import StudyModal from '../components/StudyModal.jsx';
-import DeckCard from '../components/DeckCard.jsx'; // Renamed
-import DeckCreatorModal from '../components/DeckCreatorModal.jsx'; // Renamed
+import DeckCard from '../components/DeckCard.jsx';
+import DeckCreatorModal from '../components/DeckCreatorModal.jsx';
+
+// We NO LONGER import StudySessionModal.jsx
 
 export default function MyFlashcardsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate(); // Initialize the navigate function
+
   const [flashcards, setFlashcards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDeckData, setSelectedDeckData] = useState(null);
   const [isCreatingDeck, setIsCreatingDeck] = useState(false);
+
+  // The obsolete `studyingDeckData` state has been removed.
 
   useEffect(() => {
     fetchMyDecks();
@@ -38,20 +45,22 @@ export default function MyFlashcardsPage() {
   const decks = Object.keys(groupedByDeck).sort();
 
   const handleCreateDeck = async (newDeckName) => {
-    // Create the placeholder card to represent an empty deck
     const { data, error } = await supabase.from('flashcards').insert({ 
-      question: '---PLACEHOLDER---', 
-      answer: '', 
-      deck: newDeckName, 
-      user_id: user.id 
+      question: '---PLACEHOLDER---', answer: '', deck: newDeckName, user_id: user.id 
     }).select();
-    
     setIsCreatingDeck(false);
     if (error) { console.error('Error creating new deck:', error); return; }
-    
     await fetchMyDecks();
-    // Immediately open the new empty deck in the study modal
     setSelectedDeckData({ deck: newDeckName, cards: data });
+  };
+
+  // --- THIS IS THE CORRECTED LOGIC ---
+  const handleStartStudy = (deckData) => {
+    // 1. Add the selected deck to the browser's persistent history
+    addDeckToHistory({ deckName: deckData.deck, cards: deckData.cards });
+    
+    // 2. Navigate to the dedicated study page for that deck
+    navigate(`/study/${encodeURIComponent(deckData.deck)}`);
   };
 
   return (
@@ -60,6 +69,8 @@ export default function MyFlashcardsPage() {
         <DeckCreatorModal onSave={handleCreateDeck} onCancel={() => setIsCreatingDeck(false)} />
       )}
 
+      {/* The conditional rendering for StudySessionModal has been REMOVED */}
+
       {selectedDeckData && (
         <StudyModal
           deck={selectedDeckData.deck}
@@ -67,13 +78,12 @@ export default function MyFlashcardsPage() {
           isOwner={true}
           onClose={() => setSelectedDeckData(null)}
           onCardsChange={(updatedCards) => {
-            // This is complex because a change inside the modal affects the whole page
-            // The simplest, most reliable way is to just re-fetch everything
             fetchMyDecks();
-            // And also update the modal's view in real-time
             setSelectedDeckData(prev => ({ ...prev, cards: updatedCards }));
           }}
           decks={decks}
+          // The onStartStudy prop now correctly triggers the navigation logic
+          onStartStudy={() => handleStartStudy(selectedDeckData)} 
         />
       )}
       
@@ -84,7 +94,7 @@ export default function MyFlashcardsPage() {
           <div
             onClick={() => setIsCreatingDeck(true)}
             className="bg-card border-2 border-dashed border-muted rounded-lg p-6 flex flex-col 
-                       justify-center items-center cursor-pointer hover:border-primary hover:text-primary transition-all h-60" // Made taller
+                       justify-center items-center cursor-pointer hover:border-primary hover:text-primary transition-all h-60"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" /></svg>
             <span className="mt-2 font-bold">Add Deck</span>
