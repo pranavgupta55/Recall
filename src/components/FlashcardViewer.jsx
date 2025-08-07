@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
+// DynamicFontSize is no longer imported.
 
 const progressLevels = [
     { status: 'new', label: 'New', color: 'text-status-new', borderColor: 'border-status-new', buttonBg: 'hover:bg-status-new/20' },
@@ -8,7 +9,6 @@ const progressLevels = [
     { status: 'mastered', label: 'Mastered', color: 'text-status-mastered', borderColor: 'border-status-mastered', buttonBg: 'hover:bg-status-mastered/20' }
 ];
 
-// This function now reads the persistent random values from the card object itself.
 const getCardStyle = (card, index, currentIndex, totalCards) => {
     const offset = index - currentIndex;
     
@@ -17,16 +17,16 @@ const getCardStyle = (card, index, currentIndex, totalCards) => {
     let opacity = 1;
     let cursor = 'pointer';
 
-    if (offset === 0) { // Current, Active Card
-        transform += ` translateX(0%) rotate(0deg) scale(1.0)`;
+    if (offset === 0) {
+        transform += ` rotate(0deg) scale(1.0)`;
         zIndex = 100;
-    } else if (offset < 0) { // Top (previous) stack
+    } else if (offset < 0) {
         const stackOffset = Math.abs(offset);
         const y = -100 - (stackOffset * 10); 
         const scale = 1 - (stackOffset * 0.04);
         transform += ` translateX(${card.randomX}%) translateY(${y}%) rotate(${card.randomRotation}deg) scale(${scale})`;
         opacity = stackOffset > 5 ? 0 : 1;
-    } else { // Bottom (next) stack
+    } else {
         const stackOffset = offset;
         const y = 100 + (stackOffset * 10);
         const scale = 1 - (stackOffset * 0.04);
@@ -53,8 +53,6 @@ export default function FlashcardViewer({ cards, currentIndex, isFlipped, onFlip
   const currentCard = cards[currentIndex];
   const currentStatusStyle = progressLevels.find(p => p.status === currentCard.status) || progressLevels[0];
 
-  // The useMemo hook has been removed from this component.
-
   return (
     <div className="w-full h-full relative">
         <div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-[101]">
@@ -70,9 +68,11 @@ export default function FlashcardViewer({ cards, currentIndex, isFlipped, onFlip
         </div>
 
         {cards.map((card, index) => {
-            // The style function now takes the full card object
             const style = getCardStyle(card, index, currentIndex, cards.length);
             const isCurrent = index === currentIndex;
+            const cardStatusStyle = progressLevels.find(p => p.status === card.status) || progressLevels[0];
+            const borderColor = cardStatusStyle.borderColor;
+            const borderWidth = isCurrent ? 'border-4' : 'border-2';
 
             return (
                 <div
@@ -81,11 +81,23 @@ export default function FlashcardViewer({ cards, currentIndex, isFlipped, onFlip
                     onClick={isCurrent ? onFlip : (index < currentIndex ? onPrev : onNext)}
                 >
                     <div className={`relative w-full h-full transform-style-3d transition-transform duration-500 ease-in-out ${isCurrent && isFlipped ? 'rotate-y-180' : ''}`}>
-                        <div className={`absolute w-full h-full backface-hidden bg-card rounded-xl flex items-center justify-center p-8 border-4 ${isCurrent ? currentStatusStyle.borderColor : 'border-muted'}`}>
-                            <div className="text-lg font-semibold text-center text-foreground"><ReactMarkdown>{card.question}</ReactMarkdown></div>
+                        {/* Front of Card */}
+                        <div className={`absolute w-full h-full backface-hidden bg-card rounded-xl flex items-center justify-center p-6 ${borderWidth} ${borderColor}`}>
+                            {/* --- THIS IS THE FIX --- */}
+                            <div className="w-full h-full text-lg font-semibold text-foreground text-center flex items-center justify-center p-2">
+                                <div className="max-h-full overflow-y-auto custom-scrollbar">
+                                    <ReactMarkdown>{card.question}</ReactMarkdown>
+                                </div>
+                            </div>
                         </div>
-                        <div className={`absolute w-full h-full backface-hidden rotate-y-180 bg-card rounded-xl flex items-center justify-center p-8 border-4 ${isCurrent ? currentStatusStyle.borderColor : 'border-muted'}`}>
-                            <div className="text-lg text-center text-foreground"><ReactMarkdown>{card.answer}</ReactMarkdown></div>
+                        {/* Back of Card */}
+                        <div className={`absolute w-full h-full backface-hidden rotate-y-180 bg-card rounded-xl flex items-center justify-center p-6 ${borderWidth} ${borderColor}`}>
+                             {/* --- THIS IS THE FIX --- */}
+                             <div className="w-full h-full text-base text-foreground text-center flex items-center justify-center p-2">
+                                <div className="max-h-full overflow-y-auto custom-scrollbar">
+                                    <ReactMarkdown>{card.answer}</ReactMarkdown>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -9,11 +9,10 @@ const ProgressBar = ({ value, max }) => {
     const percentage = max > 0 ? (value / max) * 100 : 0;
     return (
         <div className="w-full bg-muted rounded-full h-2 mt-2">
-            <div className="bg-status-mastered h-2 rounded-full" style={{ width: `${percentage}%` }}></div>
+            <div className="bg-status-mastered h-2 rounded-full transition-all duration-500" style={{ width: `${percentage}%` }}></div>
         </div>
     );
 };
-
 
 export default function StudyDashboardPage() {
   const [recentDecks, setRecentDecks] = useState([]);
@@ -21,6 +20,7 @@ export default function StudyDashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  // --- THIS IS THE CORRECTED LOGIC ---
   useEffect(() => {
     const fetchDecksAndProgress = async () => {
       setLoading(true);
@@ -29,9 +29,7 @@ export default function StudyDashboardPage() {
       const decksWithProgress = await Promise.all(
         decksFromHistory.map(async (deck) => {
           const cardIds = deck.cards.map(c => c.id).filter(id => id);
-          if (cardIds.length === 0) {
-            return { ...deck, masteredCount: 0 };
-          }
+          if (cardIds.length === 0) return { ...deck, masteredCount: 0 };
 
           const { count, error } = await supabase
             .from('progress')
@@ -48,8 +46,18 @@ export default function StudyDashboardPage() {
       setLoading(false);
     };
 
-    fetchDecksAndProgress();
-  }, [user.id]);
+    if (user) {
+      fetchDecksAndProgress();
+      
+      // Add event listener to refetch data when the window/tab gets focus
+      window.addEventListener('focus', fetchDecksAndProgress);
+
+      // Cleanup listener when the component unmounts
+      return () => {
+        window.removeEventListener('focus', fetchDecksAndProgress);
+      };
+    }
+  }, [user]);
 
   const handleSelectDeck = () => {
     navigate('/my-flashcards');
@@ -68,7 +76,7 @@ export default function StudyDashboardPage() {
       <div className="col-span-2">
         <h2 className="text-2xl font-bold mb-4">Recent Decks</h2>
         <div className="space-y-4 max-h-[75vh] overflow-y-auto custom-scrollbar pr-4">
-          {loading ? (<p>Loading decks...</p>) : recentDecks.length > 0 ? (
+          {loading ? (<p className="text-muted-foreground">Loading study history...</p>) : recentDecks.length > 0 ? (
             recentDecks.map(deck => (
               <div key={deck.deckName} className="bg-card p-4 rounded-lg">
                 <div className="flex items-center justify-between">
