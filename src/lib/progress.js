@@ -22,7 +22,6 @@ export const fetchProgressForDeck = async (userId, cardIds) => {
     return new Map();
   }
 
-  // Convert the array of objects to a Map for quick lookups
   const progressMap = new Map();
   for (const record of data) {
     progressMap.set(record.flashcard_id, record.status);
@@ -32,9 +31,10 @@ export const fetchProgressForDeck = async (userId, cardIds) => {
 
 /**
  * Updates (or inserts) the status for a single card for a user.
+ * This function relies on a UNIQUE constraint on the (user_id, flashcard_id) columns in the 'progress' table.
  * @param {string} userId The user's ID.
  * @param {number} cardId The flashcard's ID.
- * @param {'learning' | 'mastered'} newStatus The new status for the card.
+ * @param {'new' | 'learning' | 'reviewing' | 'mastered'} newStatus The new status for the card.
  */
 export const updateCardStatus = async (userId, cardId, newStatus) => {
   if (!userId || !cardId || !newStatus) return;
@@ -47,12 +47,13 @@ export const updateCardStatus = async (userId, cardId, newStatus) => {
       status: newStatus,
       last_seen: new Date().toISOString(),
     }, {
-      onConflict: 'user_id, flashcard_id' // This is Supabase syntax for "if conflict on these columns, update instead of insert"
+      onConflict: 'user_id, flashcard_id' // This requires a UNIQUE constraint on these columns
     })
-    .select(); // Return the updated record
+    .select();
 
   if (error) {
-    console.error('Error updating card status:', error);
+    // Log the specific error message from Supabase to make debugging easier.
+    console.error('Error updating card status:', error.message);
   }
 
   return data;

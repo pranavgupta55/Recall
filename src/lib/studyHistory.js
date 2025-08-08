@@ -1,3 +1,5 @@
+// src/lib/studyHistory.js
+
 const HISTORY_KEY = 'studyHistory';
 const TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
 
@@ -44,6 +46,7 @@ export const getRecentDecks = (includeExpired = false) => {
     const now = new Date().getTime();
     return history.filter(deck => (now - deck.timestamp) < TIMEOUT_MS);
   } catch (error) {
+    console.error("Error reading study history:", error);
     return [];
   }
 };
@@ -57,3 +60,15 @@ export const getDeckByName = (deckName) => {
     const history = getRecentDecks(true); // Check all decks, even old ones
     return history.find(deck => deck.deckName === deckName) || null;
 }
+
+/**
+ * --- BUG FIX FUNCTION ---
+ * Removes a deck from the study history in localStorage after it has been deleted.
+ * @param {string} deckNameToDelete - The name of the deck to remove.
+ */
+export const removeDeckFromHistory = (deckNameToDelete) => {
+  // Get all decks, including expired ones, to ensure it's removed completely.
+  const allHistory = getRecentDecks(true);
+  const updatedHistory = allHistory.filter(deck => deck.deckName !== deckNameToDelete);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
+};

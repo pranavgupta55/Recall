@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import ReactMarkdown from 'react-markdown';
+import DeveloperModal from '../components/DeveloperModal.jsx';
 import { FiPlus, FiTrash2, FiSave, FiZap, FiCode, FiX } from 'react-icons/fi';
 
 // --- Helper Components ---
@@ -25,37 +26,37 @@ const calculateQuestionWidth = (q, a) => {
   return Math.max(30, Math.min(70, baseRatio * 100));
 };
 
-// --- Developer Modal Component ---
-const DeveloperModal = ({ prompt, rawOutput, parsedOutput, onClose }) => {
-  return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-8 z-50" onClick={onClose}>
-      <div className="bg-card w-full h-full max-w-7xl flex flex-col p-0 rounded-xl" onClick={(e) => e.stopPropagation()}>
-        <header className="flex-shrink-0 flex items-center justify-between p-4 border-b border-white/10">
-            <h2 className="text-lg font-bold">Developer Output</h2>
-            <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10">
-                <FiX size={20} />
-            </button>
-        </header>
-        <div className="grid gap-6 p-6 flex-grow min-h-0 h-[60vh]" style={{gridTemplateColumns: '3fr 2fr 4fr'}}>
-            <div className="h-full flex flex-col">
-              <h4 className="font-bold mb-2 text-sm flex-shrink-0">Prompt Sent to AI</h4>
-              <div className="text-xs bg-black/30 p-3 rounded-md overflow-auto custom-scrollbar prose prose-invert prose-sm flex-grow"><ReactMarkdown>{prompt}</ReactMarkdown></div>
-            </div>
-            <div className="h-full flex flex-col">
-              <h4 className="font-bold mb-2 text-sm flex-shrink-0">Raw JSON Response</h4>
-              <pre className="text-xs bg-black/30 p-3 rounded-md overflow-auto custom-scrollbar flex-grow" style={{whiteSpace: 'pre-wrap', wordBreak: 'break-all'}}><code>{rawOutput}</code></pre>
-            </div>
-             <div className="h-full flex flex-col">
-              <h4 className="font-bold mb-2 text-sm flex-shrink-0">Parsed Text</h4>
-              <div className="text-xs bg-black/30 p-3 rounded-md overflow-y-auto custom-scrollbar space-y-2 prose prose-invert prose-sm flex-grow">
-                <ReactMarkdown>{parsedOutput.flashcards.map(c => `**Q:** ${c.question}\n\n**A:** ${c.answer}`).join('\n\n---\n\n')}</ReactMarkdown>
-              </div>
-            </div>
-        </div>
-      </div>
-    </div>
-  )
-}
+// // --- Developer Modal Component ---
+// const DeveloperModal = ({ prompt, rawOutput, parsedOutput, onClose }) => {
+//   return (
+//     <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-8 z-50" onClick={onClose}>
+//       <div className="bg-card w-full h-full max-w-7xl flex flex-col p-0 rounded-xl" onClick={(e) => e.stopPropagation()}>
+//         <header className="flex-shrink-0 flex items-center justify-between p-4 border-b border-white/10">
+//             <h2 className="text-lg font-bold">Developer Output</h2>
+//             <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10">
+//                 <FiX size={20} />
+//             </button>
+//         </header>
+//         <div className="grid gap-6 p-6 flex-grow min-h-0 h-[60vh]" style={{gridTemplateColumns: '3fr 2fr 4fr'}}>
+//             <div className="h-full flex flex-col">
+//               <h4 className="font-bold mb-2 text-sm flex-shrink-0">Prompt Sent to AI</h4>
+//               <div className="text-xs bg-black/30 p-3 rounded-md overflow-auto custom-scrollbar prose prose-invert prose-sm flex-grow"><ReactMarkdown>{prompt}</ReactMarkdown></div>
+//             </div>
+//             <div className="h-full flex flex-col">
+//               <h4 className="font-bold mb-2 text-sm flex-shrink-0">Raw JSON Response</h4>
+//               <pre className="text-xs bg-black/30 p-3 rounded-md overflow-auto custom-scrollbar flex-grow" style={{whiteSpace: 'pre-wrap', wordBreak: 'break-all'}}><code>{rawOutput}</code></pre>
+//             </div>
+//              <div className="h-full flex flex-col">
+//               <h4 className="font-bold mb-2 text-sm flex-shrink-0">Parsed Text</h4>
+//               <div className="text-xs bg-black/30 p-3 rounded-md overflow-y-auto custom-scrollbar space-y-2 prose prose-invert prose-sm flex-grow">
+//                 <ReactMarkdown>{parsedOutput.flashcards.map(c => `**Q:** ${c.question}\n\n**A:** ${c.answer}`).join('\n\n---\n\n')}</ReactMarkdown>
+//               </div>
+//             </div>
+//         </div>
+//       </div>
+//     </div>
+//   )
+// }
 
 
 export default function ChatbotPage() {

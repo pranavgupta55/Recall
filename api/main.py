@@ -1,9 +1,10 @@
-# /api/main.py
+# api/main.py
 
 import os
 import json
 from dotenv import load_dotenv
 from pathlib import Path
+import traceback
 
 load_dotenv()
 
@@ -12,8 +13,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, SecretStr
 from typing import List, cast
 from supabase import create_client, Client
+
+# --- FIX: Import explicit message types to prevent parsing errors ---
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.pydantic_v1 import SecretStr as PydanticSecretStr
+from langchain_core.output_parsers import JsonOutputParser
 
 # --- Configuration & Clients ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -27,7 +32,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 app = FastAPI()
 
 # --- CORS Middleware ---
-origins = ["http://localhost:5173"]
+origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -50,93 +55,153 @@ class GenerateRequest(BaseModel):
     links: str = ""
     userDefinedCards: List[Flashcard] = []
     numCards: int = 5
-    tone: str = "neutral"
     conciseness: str = "standard"
+    technicality: str = "standard"
+    formatting: str = "standard"
 
 class SaveRequest(BaseModel):
     userId: str
     deckName: str
     flashcards: List[Flashcard]
 
-# --- Prompt Building Logic ---
-def build_prompt_text(req: GenerateRequest) -> str:
-    template_path = Path(__file__).parent / "prompt_template.md"
-    template = template_path.read_text()
+class ChatMessage(BaseModel):
+    role: str
+    content: str
 
-    tone_map = {
-        "formal": "highly formal and academic",
-        "casual": "casual and easy-to-understand",
-        "neutral": "neutral and informative"
-    }
-    conciseness_map = {
-        "concise": "extremely concise, ideally a single sentence",
-        "detailed": "detailed and comprehensive, providing thorough explanations",
-        "standard": "direct and easy to understand"
-    }
+class ChatRequest(BaseModel):
+    userId: str
+    messages: List[ChatMessage]
     
-    context_section = f"**Additional Context/Notes Provided by User:**\n{req.context}" if req.context else ""
-    links_section = f"**Relevant Links Provided by User:**\n{req.links}" if req.links else ""
-    
-    user_cards_str = "\n".join([f"- Q: {card.question if card.question else '(empty)'} | A: {card.answer if card.answer else '(empty)'}" for card in req.userDefinedCards])
-    user_cards_section = f"{user_cards_str}" if user_cards_str else "None"
-
-    num_to_generate = req.numCards - len(req.userDefinedCards)
-
-    return template.format(
-        persona_details=tone_map.get(req.tone, "neutral and informative"),
-        num_cards_to_generate=max(req.numCards, len(req.userDefinedCards)), # Ensure we generate at least enough to fill user cards
-        conciseness_instruction=conciseness_map.get(req.conciseness, "direct and easy to understand"),
-        topic=req.topic,
-        context_section=context_section,
-        links_section=links_section,
-        user_cards_section=user_cards_section
-    )
+# --- NEW: Pydantic Schema for the delete request ---
+class DeleteDeckRequest(BaseModel):
+    userId: str
+    deckName: str
 
 # --- LangChain Setup ---
-model = ChatOpenAI(model="gpt-4o-mini", temperature=0.8, api_key=SecretStr(OPENAI_API_KEY))
+model = ChatOpenAI(model="gpt-4o-mini", temperature=0.7, api_key=SecretStr(OPENAI_API_KEY))
 
 # --- API Endpoints ---
-@app.post("/api/generate")
+@app.post("/api/generate", response_model=FlashcardSet)
 async def generate_cards(request: GenerateRequest):
+    """
+    Generates a set of flashcards based on user-provided topic and context.
+    """
     try:
-        full_prompt_text = build_prompt_text(request)
-        prompt = ChatPromptTemplate.from_messages([("human", full_prompt_text)])
-        chain = prompt | model.with_structured_output(FlashcardSet)
+        template_path = Path(__file__).parent / "prompt_template.md"
+        prompt_template = template_path.read_text()
         
-        raw_result = await chain.ainvoke({})
-        result = cast(FlashcardSet, raw_result)
-        
-        # We need the raw output for the new UI feature
-        raw_output_for_frontend = json.dumps(result.dict(), indent=2)
+        parser = JsonOutputParser(pydantic_object=FlashcardSet)
 
-        return {
-            "flashcards": result.flashcards, 
-            "raw_output": raw_output_for_frontend,
-            "prompt_sent": full_prompt_text  # Add this line
-        }
+        # Build the prompt with all the provided details
+        prompt = prompt_template.format(
+            num_cards=request.numCards,
+            topic=request.topic,
+            context=request.context,
+            links=request.links,
+            user_defined_cards=json.dumps([card.dict() for card in request.userDefinedCards], indent=2),
+            conciseness=request.conciseness,
+            technicality=request.technicality,
+            formatting=request.formatting,
+            format_instructions=parser.get_format_instructions()
+        )
+
+        chain = model | parser
+        response_data = await chain.ainvoke(prompt)
+        
+        return response_data
 
     except Exception as e:
-        import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"An error occurred during generation: {str(e)}")
+
 
 @app.post("/api/save")
 async def save_cards(request: SaveRequest):
-    # This endpoint remains largely the same
+    """
+    Saves a set of flashcards to a user's deck in the database.
+    """
+    if not request.userId or not request.deckName or not request.flashcards:
+        raise HTTPException(status_code=400, detail="User ID, Deck Name, and flashcards are required.")
+
     try:
-        cards_to_insert = [
-            {"question": card.question, "answer": card.answer, "deck": request.deckName, "user_id": request.userId}
+        # Prepare the records for insertion into Supabase
+        records_to_insert = [
+            {
+                "user_id": request.userId,
+                "deck": request.deckName,
+                "question": card.question,
+                "answer": card.answer,
+            }
             for card in request.flashcards
         ]
         
-        if not cards_to_insert:
-            raise HTTPException(status_code=400, detail="No flashcards provided to save.")
+        data, count = supabase.table("flashcards").insert(records_to_insert).execute()
 
-        _, count = supabase.table("flashcards").insert(cards_to_insert).execute()
-        
-        return {"message": f"Successfully created deck '{request.deckName}'!"}
-    
+        return {"message": f"Successfully saved {len(records_to_insert)} cards to deck '{request.deckName}'."}
+
     except Exception as e:
-        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while saving: {str(e)}")
+
+
+@app.post("/api/chat")
+async def chat_with_card(request: ChatRequest):
+    """
+    Handles a chat interaction related to a flashcard, tracking token usage.
+    """
+    try:
+        # --- FIX: Construct a list of BaseMessage objects for robustness ---
+        langchain_messages: List[BaseMessage] = []
+        for msg in request.messages:
+            if msg.role == 'system':
+                langchain_messages.append(SystemMessage(content=msg.content))
+            elif msg.role == 'user':
+                langchain_messages.append(HumanMessage(content=msg.content))
+            elif msg.role == 'ai':
+                langchain_messages.append(AIMessage(content=msg.content))
+        
+        response = await model.ainvoke(langchain_messages)
+        
+        token_usage = response.response_metadata.get('token_usage', {})
+        total_tokens = token_usage.get('total_tokens', 0)
+
+        if total_tokens > 0 and request.userId:
+            supabase.rpc('increment_tokens', {'user_id_input': request.userId, 'token_increment': total_tokens}).execute()
+
+        return {
+            "reply": response.content,
+            "token_info": {
+                "prompt_tokens": token_usage.get('prompt_tokens', 0),
+                "completion_tokens": token_usage.get('completion_tokens', 0),
+                "total_tokens": total_tokens,
+            }
+        }
+    except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- NEW: Endpoint to delete an entire deck for a user ---
+@app.post("/api/delete-deck")
+async def delete_deck(request: DeleteDeckRequest):
+    """
+    Deletes all flashcards associated with a specific user ID and deck name.
+    """
+    if not request.userId or not request.deckName:
+        raise HTTPException(status_code=400, detail="User ID and Deck Name are required.")
+
+    try:
+        # Perform the deletion in the 'flashcards' table
+        data, count = supabase.table("flashcards") \
+            .delete() \
+            .eq("user_id", request.userId) \
+            .eq("deck", request.deckName) \
+            .execute()
+            
+        if count == 0:
+            return {"message": f"No cards found for deck '{request.deckName}' to delete."}
+
+        return {"message": f"Successfully deleted deck '{request.deckName}' and its cards."}
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")

@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import DeckSelector from './DeckSelector.jsx';
+import { FiTrash2 } from 'react-icons/fi'; // <-- IMPORT a trash icon
 
 export default function StudyModal({
   deck,
@@ -13,7 +14,8 @@ export default function StudyModal({
   decks,
   onStartStudy,
   onAddCard,
-  onEditCard
+  onEditCard,
+  onDeleteRequest // <-- This prop is now used
 }) {
   const [cards, setCards] = useState(initialCards);
   const [selectedCards, setSelectedCards] = useState([]);
@@ -69,7 +71,21 @@ export default function StudyModal({
       <div className="bg-background rounded-2xl shadow-2xl p-8 w-full max-w-4xl h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-start mb-6">
           <h2 className="text-3xl font-bold capitalize">{deck}</h2>
-          <button onClick={onClose} className="text-4xl leading-none text-muted-foreground hover:text-foreground">&times;</button>
+          
+          {/* --- MODIFIED: Container for top-right buttons --- */}
+          <div className="flex items-center gap-3">
+            {/* --- NEW: Delete Deck Button --- */}
+            {isOwner && (
+              <button 
+                onClick={() => onDeleteRequest(deck)} 
+                className="p-2 rounded-full text-muted-foreground hover:bg-secondary/20 hover:text-secondary transition-colors"
+                title="Delete Entire Deck"
+              >
+                <FiTrash2 size={22} />
+              </button>
+            )}
+            <button onClick={onClose} className="text-4xl leading-none text-muted-foreground hover:text-foreground">&times;</button>
+          </div>
         </div>
 
         {isOwner && (
@@ -93,7 +109,7 @@ export default function StudyModal({
           </div>
         )}
 
-        {/* --- UI REVERTED: Restored original card list layout --- */}
+        {/* --- REVERTED: Restored original card list layout --- */}
         <div className="flex-grow overflow-y-auto space-y-3 p-2">
           {displayableCards.length > 0 ? displayableCards.map(card => (
             <div
