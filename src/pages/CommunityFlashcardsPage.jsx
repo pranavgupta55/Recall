@@ -11,29 +11,37 @@ export default function CommunityFlashcardsPage() {
   const [flashcards, setFlashcards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDeckData, setSelectedDeckData] = useState(null);
+  const [myDecks, setMyDecks] = useState([]); // <-- NEW: State for user's own decks
 
   useEffect(() => {
-    const fetchCommunityFlashcards = async () => {
+    const fetchAllData = async () => {
+      if (!user.id) return;
       setLoading(true);
-      // We must fetch user_id to know who owns each card
-      const { data, error } = await supabase
-        .from('flashcards')
-        .select('*')
-        .neq('user_id', user.id);
 
-      if (error) console.error('Error fetching cards:', error);
-      else if (data) setFlashcards(data);
+      // --- MODIFIED: Fetch community cards and user's decks simultaneously ---
+      const [communityRes, myDecksRes] = await Promise.all([
+        supabase.from('flashcards').select('*').neq('user_id', user.id),
+        supabase.from('flashcards').select('deck').eq('user_id', user.id)
+      ]);
+
+      if (communityRes.error) console.error('Error fetching community cards:', communityRes.error);
+      else if (communityRes.data) setFlashcards(communityRes.data);
+      
+      if (myDecksRes.error) console.error('Error fetching user decks:', myDecksRes.error);
+      else if (myDecksRes.data) {
+        const uniqueDecks = [...new Set(myDecksRes.data.map(d => d.deck))];
+        setMyDecks(uniqueDecks);
+      }
+
       setLoading(false);
     };
-    fetchCommunityFlashcards();
+    fetchAllData();
   }, [user.id]);
 
-  // Grouping logic now also stores the owner_id for the deck
   const groupedByDeck = useMemo(() => {
     return flashcards.reduce((acc, card) => {
       const deck = card.deck || 'Uncategorized';
       if (!acc[deck]) {
-        // Initialize with cards array and the owner's ID
         acc[deck] = { cards: [], owner_id: card.user_id };
       }
       acc[deck].cards.push(card);
@@ -47,12 +55,15 @@ export default function CommunityFlashcardsPage() {
         <StudyModal
           deck={selectedDeckData.deck}
           cards={selectedDeckData.cards}
-          isOwner={false} // This is a community deck
-          // Pass the owner_id to the modal for the transfer function
-          deckOwnerId={selectedDeckData.owner_id} 
+          isOwner={false}
           onClose={() => setSelectedDeckData(null)}
           onCardsChange={() => {}}
-          decks={[]}
+          decks={myDecks} // <-- MODIFIED: Pass user's decks to the modal
+          // Provide placeholder functions for owner-only actions
+          onStartStudy={() => alert("Please copy this deck to your account to start a study session.")}
+          onAddCard={() => {}}
+          onEditCard={() => {}}
+          onDeleteRequest={() => {}}
         />
       )}
       
