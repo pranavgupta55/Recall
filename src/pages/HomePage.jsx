@@ -46,7 +46,7 @@ export default function HomePage() {
 
   return (
     <div className="max-w-md mx-auto p-8 border border-muted rounded-lg">
-      <h1 className="text-2xl font-bold text-center mb-6">Flashcard Login</h1>
+      <h1 className="text-2xl font-bold text-center mb-6">User Login</h1>
       <form onSubmit={handleLogin}>
         <div className="mb-4">
           <label className="block text-muted-foreground mb-2" htmlFor="email">Email</label>
