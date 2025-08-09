@@ -39,7 +39,7 @@ export default function AIHelperPage() {
   const [conciseness, setConciseness] = useState('standard');
   const [technicality, setTechnicality] = useState('standard');
   const [formatting, setFormatting] = useState('standard');
-  const [cardRows, setCardRows] = useState(() => Array.from({ length: 5 }, (_, i) => ({ id: i, question: '', answer: '' })));
+  const [cardRows, setCardRows] = useState(() => Array.from({ length: 4 }, (_, i) => ({ id: i, question: '', answer: '' })));
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -48,7 +48,6 @@ export default function AIHelperPage() {
   
   const [deletingId, setDeletingId] = useState(null);
 
-  // --- NEW: Token usage state ---
   const [tokensUsed, setTokensUsed] = useState(0);
   const [isLoadingTokens, setIsLoadingTokens] = useState(true);
   const isOverLimit = tokensUsed >= TOKEN_LIMIT;
@@ -68,7 +67,6 @@ export default function AIHelperPage() {
     if (scrollRef.current) scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [cardRows.length]);
 
-  // --- NEW: Effect to fetch token usage ---
   useEffect(() => {
     const fetchTokenUsage = async () => {
         if (!user?.id) return;
@@ -173,16 +171,47 @@ export default function AIHelperPage() {
                 <Tooltip text="Save the current flashcards to your account."><button onClick={handleSave} disabled={isSaving || isGenerating || cardRows.every(c => !c.question || !c.answer)} className="w-full h-11 glass-pane bg-secondary/90 hover:bg-secondary text-secondary-foreground font-bold text-sm rounded-xl flex items-center justify-center gap-2 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed">{isSaving ? <><LoadingSpinner /> Saving...</> : <><FiSave size={16} /> Save Deck</>}</button></Tooltip>
             </div>
           </div>
+
+          {/* --- RIGHT COLUMN --- */}
           <div className="flex flex-col gap-4">
-            <div className="flex-grow glass-pane p-2 relative min-h-0" style={{ height: '436px' }}>
-                <Tooltip text="This is your interactive editor. Pre-fill cards to guide the AI, or edit the results before you save.">
-                    <div ref={scrollRef} className="absolute inset-2 space-y-1.5 overflow-y-auto custom-scrollbar">{cardRows.map((card, index) => (<div key={card.id} onAnimationEnd={() => handleAnimationEnd(card.id)} className={`p-2 rounded-xl relative group/card transition-colors duration-300 ${deletingId === card.id ? 'animate-shrink-and-fade' : 'hover:bg-background/60'}`}><button onClick={() => removeCardRow(card.id)} className="absolute top-1.5 right-1.5 p-1 rounded-full text-muted-foreground opacity-0 group-hover/card:opacity-100 hover:bg-secondary/20 hover:text-secondary transition-opacity"><FiTrash2 size={14}/></button><div className="flex gap-2"><div style={{ width: `${calculateQuestionWidth(card.question, card.answer)}%` }} className="transition-[width] duration-500 ease-out"><textarea value={card.question} onChange={(e) => handleCardChange(card.id, 'question', e.target.value)} placeholder={`Question ${index + 1}...`} className="input-style min-h-[4.5rem] bg-transparent border-white/5 group-hover/card:border-white/20 resize-none text-sm" /></div><div className="flex-grow"><textarea value={card.answer} onChange={(e) => handleCardChange(card.id, 'answer', e.target.value)} placeholder="Answer..." className="input-style min-h-[4.5rem] bg-transparent border-white/5 group-hover/card:border-white/20 resize-none text-sm" /></div></div></div>))}</div>
+            {/* --- NEW: Visible instruction panel --- */}
+            <div className="glass-pane p-3 text-center">
+              <p className="text-sm text-muted-foreground italic">
+                This is your interactive editor. Pre-fill cards to guide the AI, or edit the results before you save.
+              </p>
+            </div>
+
+            {/* --- MODIFIED: Flashcard container with reduced height and Tooltip removed --- */}
+            <div className="flex-grow glass-pane p-2 relative min-h-0" style={{ height: '370px' }}>
+              <div ref={scrollRef} className="absolute inset-2 space-y-1.5 overflow-y-auto custom-scrollbar">
+                {cardRows.map((card, index) => (
+                    <div key={card.id} onAnimationEnd={() => handleAnimationEnd(card.id)} className={`p-2 rounded-xl relative group/card transition-colors duration-300 ${deletingId === card.id ? 'animate-shrink-and-fade' : 'hover:bg-background/60'}`}>
+                        <button onClick={() => removeCardRow(card.id)} className="absolute top-1.5 right-1.5 p-1 rounded-full text-muted-foreground opacity-0 group-hover/card:opacity-100 hover:bg-secondary/20 hover:text-secondary transition-opacity"><FiTrash2 size={14}/></button>
+                        <div className="flex gap-2">
+                          <div style={{ width: `${calculateQuestionWidth(card.question, card.answer)}%` }} className="transition-[width] duration-500 ease-out">
+                              <textarea value={card.question} onChange={(e) => handleCardChange(card.id, 'question', e.target.value)} placeholder={`Question ${index + 1}...`} className="input-style min-h-[4.5rem] bg-transparent border-white/5 group-hover/card:border-white/20 resize-none text-sm" />
+                          </div>
+                          <div className="flex-grow">
+                              <textarea value={card.answer} onChange={(e) => handleCardChange(card.id, 'answer', e.target.value)} placeholder="Answer..." className="input-style min-h-[4.5rem] bg-transparent border-white/5 group-hover/card:border-white/20 resize-none text-sm" />
+                          </div>
+                        </div>
+                    </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="pt-2">
+                <Tooltip text="Add another blank card to the editor.">
+                    <button onClick={addCardRow} className="w-full h-11 glass-pane text-muted-foreground font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors duration-300">
+                        <FiPlus /> Add New Card
+                    </button>
                 </Tooltip>
             </div>
-            <div className="pt-2"><Tooltip text="Add another blank card to the editor."><button onClick={addCardRow} className="w-full h-11 glass-pane text-muted-foreground font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors duration-300"><FiPlus /> Add New Card</button></Tooltip></div>
           </div>
         </div>
-        <div className="h-6 flex-shrink-0 text-center">{(error || successMessage) && <div className={`font-semibold p-1 rounded-lg ${error ? 'text-secondary' : 'text-primary'}`}>{error || successMessage}</div>}</div>
+        <div className="h-6 flex-shrink-0 text-center">
+            {(error || successMessage) && <div className={`font-semibold p-1 rounded-lg ${error ? 'text-secondary' : 'text-primary'}`}>{error || successMessage}</div>}
+        </div>
       </div>
     </>
   );
