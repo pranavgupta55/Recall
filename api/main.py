@@ -32,7 +32,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 app = FastAPI()
 
 # --- CORS Middleware ---
-origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+origins = ["http://localhost:5173", "http://127.0.0.1:5173", "https://recall-ai-beta.vercel.app/"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
