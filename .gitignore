@@ -1,13 +1,18 @@
 # Dependencies
 /node_modules
 node_modules
-api/venv
 
 # Build artifacts
 /dist
 /build
 dist
 dist-ssr
+
+# Python
+/venv
+api/venv
+__pycache__/
+*.pyc
 
 # Log files
 logs
@@ -23,10 +28,10 @@ lerna-debug.log*
 .env.local
 .env.*.local
 .env.*
-supabase/.env.local
-supabase/seed.sql
+*.env
 api/.env
 api/env
+supabase/.env.local
 
 # IDE and OS files
 .vscode/
@@ -46,3 +51,7 @@ api/env
 # Supabase
 supabase/.temp/
 supabase/functions/**/deno.lock
+supabase/seed.sql
+
+# Vercel
+.vercel

@@ -1,25 +1,29 @@
 {
-    "builds": [
-      {
-        "src": "api/**/*.py",
-        "use": "@vercel/python"
-      },
-      {
-        "src": "package.json",
-        "use": "@vercel/node",
-        "config": {
-          "maxLambdaSize": "15mb"
-        }
+  "builds": [
+    {
+      "src": "/api/main.py",
+      "use": "@vercel/python",
+      "config": {
+        "runtime": "python3.9",
+        "maxLambdaSize": "15mb"
       }
-    ],
-    "routes": [
-      {
-        "src": "/api/(.*)",
-        "dest": "/api/generate_cards.py"
-      },
-      {
-        "src": "/(.*)",
-        "dest": "/"
+    },
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
       }
-    ]
-  }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/main.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
+}
