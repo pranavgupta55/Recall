@@ -1,12 +1,10 @@
 {
+  "version": 2,
   "builds": [
     {
-      "src": "/api/main.py",
+      "src": "api/main.py",
       "use": "@vercel/python",
-      "config": {
-        "runtime": "python3.9",
-        "maxLambdaSize": "15mb"
-      }
+      "config": { "runtime": "python3.9" }
     },
     {
       "src": "package.json",
@@ -20,6 +18,9 @@
     {
       "src": "/api/(.*)",
       "dest": "/api/main.py"
+    },
+    {
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
