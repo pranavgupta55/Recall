@@ -4,8 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
-// --- MODIFIED: Import the new cleanup function ---
-import { addDeckToHistory, removeDeckFromHistory } from '../lib/studyHistory.js';
+import { addDeckToHistory } from '../lib/studyHistory.js';
 
 import StudyModal from '../components/StudyModal.jsx';
 import DeckCard from '../components/DeckCard.jsx';
@@ -23,6 +22,7 @@ export default function MyFlashcardsPage() {
   const [editingCard, setEditingCard] = useState(null);
   const [selectedDeckName, setSelectedDeckName] = useState(null);
 
+  // --- NEW: State for the delete confirmation modal ---
   const [deckToDelete, setDeckToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -59,12 +59,7 @@ export default function MyFlashcardsPage() {
   };
   
   const handleStartStudy = (deckName, cards) => {
-    // We update the history with the latest card count here
-    addDeckToHistory({ 
-        deckName: deckName, 
-        cardCount: cards.filter(c => c.question !== '---PLACEHOLDER---').length,
-        cards: cards 
-    });
+    addDeckToHistory({ deckName: deckName, cards: cards });
     navigate(`/study/${encodeURIComponent(deckName)}`);
   };
 
@@ -79,7 +74,7 @@ export default function MyFlashcardsPage() {
     await fetchMyDecks();
   };
 
-  // --- MODIFIED: This function now cleans up localStorage ---
+  // --- NEW: Function to handle the final deletion confirmation ---
   const handleConfirmDelete = async () => {
     if (!deckToDelete) return;
     setIsDeleting(true);
@@ -92,10 +87,7 @@ export default function MyFlashcardsPage() {
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail || 'Failed to delete deck.');
         
-        // --- BUG FIX: Remove the deleted deck from localStorage history ---
-        removeDeckFromHistory(deckToDelete);
-        
-        // Close modals and refresh data from the database
+        // Close modals and refresh data
         setDeckToDelete(null);
         setSelectedDeckName(null);
         await fetchMyDecks();
@@ -110,6 +102,7 @@ export default function MyFlashcardsPage() {
 
   return (
     <div className="w-full max-w-7xl mx-auto p-4 sm:p-8">
+      {/* --- NEW: Render the delete confirmation modal --- */}
       {deckToDelete && (
         <DeleteConfirmationModal
             deckName={deckToDelete}
@@ -132,7 +125,8 @@ export default function MyFlashcardsPage() {
           decks={decks}
           onStartStudy={() => handleStartStudy(selectedDeckName, groupedByDeck[selectedDeckName])}
           onEditCard={(card) => setEditingCard(card)}
-_         onAddCard={() => setEditingCard(true)}
+          onAddCard={() => setEditingCard(true)}
+          // --- NEW: Pass the handler to initiate deletion ---
           onDeleteRequest={(deck) => setDeckToDelete(deck)}
         />
       )}

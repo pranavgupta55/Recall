@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
-import { getDeckByName } from '../lib/studyHistory.js';
+// --- MODIFIED: Import addDeckToHistory to re-populate local cache ---
+import { getDeckByName, addDeckToHistory } from '../lib/studyHistory.js';
 import { fetchProgressForDeck, updateCardStatus } from '../lib/progress.js';
+// --- NEW: Import supabase client for direct database access ---
+import { supabase } from '../lib/supabaseClient.js';
 
 import FlashcardViewer from '../components/FlashcardViewer.jsx';
 import ChatbotPanel from '../components/ChatbotPanel.jsx';
@@ -25,16 +28,45 @@ export default function StudySessionPage() {
   const [isDevModalOpen, setIsDevModalOpen] = useState(false);
   const [devModalData, setDevModalData] = useState([]);
 
+  // --- THIS IS THE ONLY SECTION THAT HAS BEEN MODIFIED ---
   useEffect(() => {
     const loadDeckAndProgress = async () => {
+      if (!user?.id) return; // Wait until the user object is available
       setLoading(true);
-      const deckData = getDeckByName(decodedDeckName);
+
+      // Attempt to load from localStorage first for speed
+      let deckData = getDeckByName(decodedDeckName);
+
+      // If not in localStorage, fetch from the database (the source of truth)
       if (!deckData) {
+        const { data: fetchedCards, error } = await supabase
+          .from('flashcards')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('deck', decodedDeckName);
+
+        // If the deck truly doesn't exist in the DB, stop here.
+        if (error || !fetchedCards || fetchedCards.length === 0) {
+          console.error("Could not find deck in localStorage or database.", error);
+          setCards([]);
+          setLoading(false);
+          return;
+        }
+
+        // If found, rebuild the deck object and cache it in localStorage for next time
+        deckData = { deckName: decodedDeckName, cards: fetchedCards };
+        addDeckToHistory(deckData);
+      }
+
+      // Proceed with the fetched/loaded deck data
+      const studyCards = deckData.cards.filter(c => c.question !== '---PLACEHOLDER---');
+      
+      if (studyCards.length === 0) {
         setCards([]);
         setLoading(false);
         return;
       }
-      const studyCards = deckData.cards.filter(c => c.question !== '---PLACEHOLDER---');
+      
       const cardIds = studyCards.map(c => c.id);
       const progressMap = await fetchProgressForDeck(user.id, cardIds);
       
@@ -49,7 +81,7 @@ export default function StudySessionPage() {
       setLoading(false);
     };
     loadDeckAndProgress();
-  }, [decodedDeckName, user.id]);
+  }, [decodedDeckName, user?.id]); // Depend on user.id to re-run when user loads
 
   const handleSetStatus = async (status) => {
     if (cards.length === 0) return;
@@ -113,7 +145,6 @@ export default function StudySessionPage() {
   if (cards.length === 0) return <div className="flex flex-col items-center justify-center text-center p-8 h-full">The deck could not be found.</div>;
 
   return (
-    // The root div provides height and padding, and its overflow is hidden.
     <div className="w-full h-[calc(100vh-var(--navbar-height,80px))] p-8 bg-background overflow-hidden">
       {isHelpVisible && <HotkeyHelpModal metaKey={isMac ? '⌘' : 'Ctrl'} />}
       {isDevModalOpen && <DeveloperModal messages={devModalData} onClose={() => setIsDevModalOpen(false)} />}
@@ -122,10 +153,6 @@ export default function StudySessionPage() {
       </div>
       
       <div className="grid grid-cols-5 w-full h-full gap-8">
-        {/* --- BUG FIX --- */}
-        {/* Added `relative` and `overflow-hidden` to this grid cell. */}
-        {/* This creates a clipping boundary that contains the transformed, off-screen cards from the FlashcardViewer. */}
-        {/* This prevents the transformed elements from affecting the browser's layout and causing the unwanted page scroll. */}
         <div className={`col-span-3 ${isDevModalOpen ? 'z-0' : 'z-10'} relative overflow-hidden`}>
             <FlashcardViewer cards={cards} currentIndex={currentIndex} isFlipped={isFlipped} onFlip={() => setIsFlipped(!isFlipped)} onNext={() => handleNavigate('next')} onPrev={() => handleNavigate('prev')} onSetStatus={handleSetStatus} />
         </div>
