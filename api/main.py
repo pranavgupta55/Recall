@@ -14,7 +14,6 @@ from pydantic import BaseModel, Field, SecretStr
 from typing import List, cast
 from supabase import create_client, Client
 
-# --- FIX: Import explicit message types to prevent parsing errors ---
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
 from langchain_openai import ChatOpenAI
 from langchain_core.pydantic_v1 import SecretStr as PydanticSecretStr
@@ -24,6 +23,9 @@ from langchain_core.output_parsers import JsonOutputParser
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
+# --- Define the token limit on the server ---
+TOKEN_LIMIT = 100000 
 
 if not (SUPABASE_URL and SUPABASE_SERVICE_KEY and OPENAI_API_KEY):
     raise ValueError("One or more required environment variables are missing.")
@@ -50,6 +52,7 @@ class FlashcardSet(BaseModel):
     flashcards: List[Flashcard]
 
 class GenerateRequest(BaseModel):
+    userId: str 
     topic: str
     context: str = ""
     links: str = ""
@@ -72,7 +75,6 @@ class ChatRequest(BaseModel):
     userId: str
     messages: List[ChatMessage]
     
-# --- NEW: Pydantic Schema for the delete request ---
 class DeleteDeckRequest(BaseModel):
     userId: str
     deckName: str
@@ -80,19 +82,47 @@ class DeleteDeckRequest(BaseModel):
 # --- LangChain Setup ---
 model = ChatOpenAI(model="gpt-4o-mini", temperature=0.7, api_key=SecretStr(OPENAI_API_KEY))
 
+# --- Helper function to check token usage ---
+def check_token_limit(user_id: str):
+    """Checks if a user is over their token limit. Raises HTTPException if they are."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User ID is required for this operation.")
+        
+    try:
+        profile_res = supabase.table("profiles").select("tokens_used").eq("id", user_id).single().execute()
+        
+        if not profile_res.data:
+             raise HTTPException(status_code=404, detail="User profile not found.")
+
+        tokens_used = profile_res.data.get("tokens_used", 0)
+        
+        if tokens_used >= TOKEN_LIMIT:
+            raise HTTPException(
+                status_code=429, # "Too Many Requests"
+                detail=f"You have exceeded your monthly token limit of {TOKEN_LIMIT}. Please wait until next month."
+            )
+            
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Could not verify token usage: {str(e)}")
+
+
 # --- API Endpoints ---
 @app.post("/api/generate", response_model=FlashcardSet)
 async def generate_cards(request: GenerateRequest):
     """
-    Generates a set of flashcards based on user-provided topic and context.
+    Generates a set of flashcards, checking the user's token limit first.
     """
+    check_token_limit(request.userId)
+    
     try:
         template_path = Path(__file__).parent / "prompt_template.md"
         prompt_template = template_path.read_text()
         
         parser = JsonOutputParser(pydantic_object=FlashcardSet)
 
-        # Build the prompt with all the provided details
         prompt = prompt_template.format(
             num_cards=request.numCards,
             topic=request.topic,
@@ -104,10 +134,17 @@ async def generate_cards(request: GenerateRequest):
             formatting=request.formatting,
             format_instructions=parser.get_format_instructions()
         )
-
+        
+        # --- THIS IS THE FIX ---
+        # Revert to using the LangChain Expression Language (LCEL) chain.
+        # This correctly pipes the model's AIMessage output to the parser, 
+        # which knows how to extract the string content before parsing the JSON.
         chain = model | parser
         response_data = await chain.ainvoke(prompt)
         
+        # Note: This endpoint is only capped, it does not increment token usage.
+        # The /api/chat endpoint handles the incrementing.
+
         return response_data
 
     except Exception as e:
@@ -124,7 +161,6 @@ async def save_cards(request: SaveRequest):
         raise HTTPException(status_code=400, detail="User ID, Deck Name, and flashcards are required.")
 
     try:
-        # Prepare the records for insertion into Supabase
         records_to_insert = [
             {
                 "user_id": request.userId,
@@ -147,10 +183,11 @@ async def save_cards(request: SaveRequest):
 @app.post("/api/chat")
 async def chat_with_card(request: ChatRequest):
     """
-    Handles a chat interaction related to a flashcard, tracking token usage.
+    Handles a chat interaction, checking the token limit and tracking usage.
     """
+    check_token_limit(request.userId)
+    
     try:
-        # --- FIX: Construct a list of BaseMessage objects for robustness ---
         langchain_messages: List[BaseMessage] = []
         for msg in request.messages:
             if msg.role == 'system':
@@ -180,7 +217,6 @@ async def chat_with_card(request: ChatRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- NEW: Endpoint to delete an entire deck for a user ---
 @app.post("/api/delete-deck")
 async def delete_deck(request: DeleteDeckRequest):
     """
@@ -190,7 +226,6 @@ async def delete_deck(request: DeleteDeckRequest):
         raise HTTPException(status_code=400, detail="User ID and Deck Name are required.")
 
     try:
-        # Perform the deletion in the 'flashcards' table
         data, count = supabase.table("flashcards") \
             .delete() \
             .eq("user_id", request.userId) \

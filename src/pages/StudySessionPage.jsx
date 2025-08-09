@@ -1,10 +1,10 @@
+// src/pages/StudySessionPage.jsx
+
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
-// --- MODIFIED: Import addDeckToHistory to re-populate local cache ---
 import { getDeckByName, addDeckToHistory } from '../lib/studyHistory.js';
 import { fetchProgressForDeck, updateCardStatus } from '../lib/progress.js';
-// --- NEW: Import supabase client for direct database access ---
 import { supabase } from '../lib/supabaseClient.js';
 
 import FlashcardViewer from '../components/FlashcardViewer.jsx';
@@ -13,6 +13,7 @@ import HotkeyHelpModal from '../components/HotkeyHelpModal.jsx';
 import DeveloperModal from '../components/DeveloperModal.jsx';
 
 const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+const TOKEN_LIMIT = 100000;
 
 export default function StudySessionPage() {
   const { deckName } = useParams();
@@ -28,39 +29,32 @@ export default function StudySessionPage() {
   const [isDevModalOpen, setIsDevModalOpen] = useState(false);
   const [devModalData, setDevModalData] = useState([]);
 
-  // --- THIS IS THE ONLY SECTION THAT HAS BEEN MODIFIED ---
+  // --- NEW: Token usage state ---
+  const [tokensUsed, setTokensUsed] = useState(0);
+  const isOverLimit = tokensUsed >= TOKEN_LIMIT;
+
   useEffect(() => {
     const loadDeckAndProgress = async () => {
-      if (!user?.id) return; // Wait until the user object is available
+      if (!user?.id) return;
       setLoading(true);
 
-      // Attempt to load from localStorage first for speed
+      const { data: profileData } = await supabase.from('profiles').select('tokens_used').eq('id', user.id).single();
+      if (profileData) setTokensUsed(profileData.tokens_used);
+
       let deckData = getDeckByName(decodedDeckName);
-
-      // If not in localStorage, fetch from the database (the source of truth)
       if (!deckData) {
-        const { data: fetchedCards, error } = await supabase
-          .from('flashcards')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('deck', decodedDeckName);
-
-        // If the deck truly doesn't exist in the DB, stop here.
+        const { data: fetchedCards, error } = await supabase.from('flashcards').select('*').eq('user_id', user.id).eq('deck', decodedDeckName);
         if (error || !fetchedCards || fetchedCards.length === 0) {
-          console.error("Could not find deck in localStorage or database.", error);
+          console.error("Could not find deck.", error);
           setCards([]);
           setLoading(false);
           return;
         }
-
-        // If found, rebuild the deck object and cache it in localStorage for next time
         deckData = { deckName: decodedDeckName, cards: fetchedCards };
         addDeckToHistory(deckData);
       }
 
-      // Proceed with the fetched/loaded deck data
       const studyCards = deckData.cards.filter(c => c.question !== '---PLACEHOLDER---');
-      
       if (studyCards.length === 0) {
         setCards([]);
         setLoading(false);
@@ -81,7 +75,7 @@ export default function StudySessionPage() {
       setLoading(false);
     };
     loadDeckAndProgress();
-  }, [decodedDeckName, user?.id]); // Depend on user.id to re-run when user loads
+  }, [decodedDeckName, user?.id]);
 
   const handleSetStatus = async (status) => {
     if (cards.length === 0) return;
@@ -93,11 +87,7 @@ export default function StudySessionPage() {
   const handleNavigate = (direction) => {
     if (cards.length === 0) return;
     setIsFlipped(false);
-    if (direction === 'next') {
-      setCurrentIndex(prev => (prev + 1) % cards.length);
-    } else {
-      setCurrentIndex(prev => (prev - 1 + cards.length) % cards.length);
-    }
+    setCurrentIndex(prev => (direction === 'next' ? (prev + 1) % cards.length : (prev - 1 + cards.length) % cards.length));
   };
 
   const handleDevModalOpen = (messages) => {
@@ -127,7 +117,12 @@ export default function StudySessionPage() {
         case '2': handleSetStatus('learning'); break;
         case '3': handleSetStatus('reviewing'); break;
         case '4': handleSetStatus('mastered'); break;
-        case '/': e.preventDefault(); chatInputRef.current?.focus(); break;
+        case '/': 
+            if (!isOverLimit) {
+                e.preventDefault();
+                chatInputRef.current?.focus();
+            }
+            break;
       }
     };
     const handleKeyUp = (e) => {
@@ -139,7 +134,7 @@ export default function StudySessionPage() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [cards, currentIndex, isFlipped]);
+  }, [cards, currentIndex, isFlipped, isOverLimit]);
 
   if (loading) return <div className="flex items-center justify-center h-full text-muted-foreground">Loading session...</div>;
   if (cards.length === 0) return <div className="flex flex-col items-center justify-center text-center p-8 h-full">The deck could not be found.</div>;
@@ -157,7 +152,16 @@ export default function StudySessionPage() {
             <FlashcardViewer cards={cards} currentIndex={currentIndex} isFlipped={isFlipped} onFlip={() => setIsFlipped(!isFlipped)} onNext={() => handleNavigate('next')} onPrev={() => handleNavigate('prev')} onSetStatus={handleSetStatus} />
         </div>
         <div className="col-span-2 flex flex-col min-h-0">
-          <ChatbotPanel forwardRef={chatInputRef} userId={user.id} deckName={decodedDeckName} fullDeck={cards} currentCardIndex={currentIndex} onDevOpen={handleDevModalOpen} onClearChat={handleClearChat} />
+          <ChatbotPanel 
+            forwardRef={chatInputRef} 
+            userId={user.id} 
+            deckName={decodedDeckName} 
+            fullDeck={cards} 
+            currentCardIndex={currentIndex} 
+            onDevOpen={handleDevModalOpen} 
+            onClearChat={handleClearChat}
+            isOverLimit={isOverLimit}
+          />
         </div>
       </div>
     </div>
